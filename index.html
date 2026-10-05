@@ -15184,7 +15184,703 @@ function genItemDesc_v11(name) {
   console.log('%c[V60] ✅ 世界运行/战斗/死亡/阿蒙玩家线已安全挂载','color:#7c3aed;font-weight:700');
 })();
 /* ▲▲▲ V60 ▲▲▲ */
+/* ▼▼▼ V61.1 · 物品实体描述与装备安全增强层 ▼▼▼ */
+(function(){
+'use strict';
 
+const PREFIX='[V61.1]';
+
+
+// ===============================
+// 物品基础知识库
+// 不猜名字，只提供已确认类型
+// ===============================
+
+const ITEM_KNOWLEDGE_V61={
+
+'杯':{
+ type:'器物',
+ desc:'用于盛放液体的日常器皿，具体材质、年代和来源需要进一步确认。',
+ slot:null
+},
+
+'茶杯':{
+ type:'器物',
+ desc:'用于饮茶的杯具，属于普通生活用品。若具有特殊来源或神秘属性，需要额外确认。',
+ slot:null
+},
+
+'裙':{
+ type:'服装',
+ desc:'女性服饰的一种，覆盖身体下半部分。具体材质、制作工艺和神秘效果取决于物品本身。',
+ slot:'body'
+},
+
+'长裙':{
+ type:'服装',
+ desc:'长款服饰，主要用于遮蔽和装饰身体，不属于腿部装备。',
+ slot:'body'
+},
+
+'帽':{
+ type:'头部装备',
+ desc:'佩戴于头部的装饰或防护装备。',
+ slot:'head'
+},
+
+'戒指':{
+ type:'饰品',
+ desc:'佩戴于手指上的饰品，可能附带特殊能力。',
+ slot:'accessory'
+},
+
+'项链':{
+ type:'饰品',
+ desc:'佩戴于颈部的饰品，可能拥有神秘学性质。',
+ slot:'accessory'
+},
+
+'鞋':{
+ type:'足部装备',
+ desc:'用于保护双脚的装备，不属于腿部。',
+ slot:'feet'
+}
+
+};
+
+
+// ===============================
+// 获取真实描述
+// ===============================
+
+function getItemDescV61(item){
+
+if(!item)return '';
+
+if(item.description &&
+!/(普通的|平平无奇|日常用品|一件普通器物)/.test(item.description)){
+return item.description;
+}
+
+
+let name=item.name||'';
+
+
+for(let key in ITEM_KNOWLEDGE_V61){
+
+if(name.includes(key)){
+
+let info=ITEM_KNOWLEDGE_V61[key];
+
+item.type=item.type||info.type;
+
+if(!item.slot && info.slot){
+item.slot=info.slot;
+}
+
+return info.desc;
+
+}
+
+}
+
+
+return item.description ||
+'该物品的信息尚未完全确认，需要进一步调查。';
+
+}
+
+
+
+// ===============================
+// 装备槽修正
+// ===============================
+
+function fixEquipSlotV61(item){
+
+if(!item)return;
+
+let name=item.name||'';
+
+
+// 裙子绝不能进入 legs
+if(/裙/.test(name)){
+
+item.slot='body';
+
+}
+
+
+// 鞋子进入 feet
+if(/鞋|靴/.test(name)){
+
+item.slot='feet';
+
+}
+
+
+// 帽子
+if(/帽|冠/.test(name)){
+
+item.slot='head';
+
+}
+
+}
+
+
+
+// ===============================
+// 装备强化
+// ===============================
+
+function enhanceEquipV61(item){
+
+if(!item)return;
+
+
+if(!item.bonuses){
+
+item.bonuses={};
+
+}
+
+
+if(item.type==='封印物'){
+
+item.combatPower=
+Math.max(item.combatPower||0,50);
+
+
+item.bonuses.sealedPower=
+item.bonuses.sealedPower||20;
+
+
+}
+
+
+else if(item.slot){
+
+item.combatPower=
+Math.max(item.combatPower||0,5);
+
+}
+
+
+}
+
+
+
+// ===============================
+// 封印物保护
+// ===============================
+
+function normalizeSealedItemV61(item){
+
+if(!item)return;
+
+
+if(item.type==='封印物'){
+
+item.sealed=true;
+
+item.description=
+getItemDescV61(item);
+
+
+item.combatPower=
+Math.max(item.combatPower||0,80);
+
+}
+
+}
+
+
+
+// ===============================
+// 暴露接口
+// ===============================
+
+window.V61Item={
+describe:getItemDescV61,
+fixSlot:fixEquipSlotV61,
+enhance:enhanceEquipV61
+};
+
+
+
+// ===============================
+// 轻量扫描现有数据
+// 不改UI，不改流程
+// ===============================
+
+try{
+
+if(state){
+
+if(Array.isArray(state.bag)){
+
+state.bag.forEach(i=>{
+
+i.description=getItemDescV61(i);
+
+fixEquipSlotV61(i);
+
+enhanceEquipV61(i);
+
+});
+
+}
+
+
+if(Array.isArray(state.sealed)){
+
+state.sealed.forEach(i=>{
+
+normalizeSealedItemV61(i);
+
+});
+
+}
+
+}
+
+}catch(e){
+
+console.warn(PREFIX,e);
+
+}
+
+
+console.log(
+'%c'+PREFIX+' 已加载：物品描述/装备槽/封印物增强',
+'color:#059669;font-weight:bold'
+);
+
+
+})();
+/* ▲▲▲ V61.1 结束 ▲▲▲ */
+/* ▼▼▼ V62 · NPC档案自动完善与正文联动层 ▼▼▼ */
+(function(){
+'use strict';
+
+console.log('[V62] NPC档案系统加载中...');
+
+
+/* =========================
+   工具
+========================= */
+
+function safeStr(v){
+    if(v===undefined || v===null) return '';
+    return String(v).trim();
+}
+
+
+function isEmpty(v){
+    if(!v) return true;
+
+    var s=String(v);
+
+    return (
+        s.includes('未知') ||
+        s.includes('不明') ||
+        s.includes('不详') ||
+        s.includes('未曾谋面') ||
+        s.includes('不了解') ||
+        s.includes('暂无')
+    );
+}
+
+
+/* =========================
+   基础NPC模板
+========================= */
+
+function createNpcTemplate(name){
+
+    return {
+
+        name:name,
+
+        age:"",
+        gender:"",
+        appearance:"",
+        personality:"",
+
+        occupation:"",
+        identity:"",
+        faction:"",
+        location:"",
+
+        path:"",
+        seq:"",
+
+        firstMeet:"",
+        lastSeen:"",
+
+        _v62:true
+
+    };
+}
+
+
+
+/* =========================
+   原著资料库接口
+   不存在也不会报错
+========================= */
+
+function getCanonNpc(name){
+
+    try{
+
+        if(window.CANON_NPC_DATABASE &&
+           CANON_NPC_DATABASE[name]){
+
+            return CANON_NPC_DATABASE[name];
+
+        }
+
+    }catch(e){}
+
+    return null;
+
+}
+
+
+
+
+/* =========================
+   补全资料
+========================= */
+
+function fillField(npc,key,value){
+
+    if(!value) return;
+
+    if(isEmpty(npc[key])){
+
+        npc[key]=value;
+
+    }
+
+}
+
+
+
+function completeNpc(npc,data){
+
+
+    var canon=getCanonNpc(npc.name);
+
+
+    // 原著优先
+
+    if(canon){
+
+        Object.keys(canon).forEach(function(k){
+
+            if(isEmpty(npc[k])){
+
+                npc[k]=canon[k];
+
+            }
+
+        });
+
+    }
+
+
+
+    // AI已有资料补充
+
+    if(data){
+
+        Object.keys(data).forEach(function(k){
+
+            if(
+                k!=="name" &&
+                !isEmpty(data[k])
+            ){
+
+                fillField(
+                    npc,
+                    k,
+                    data[k]
+                );
+
+            }
+
+        });
+
+    }
+
+
+
+    // 最低限度补全
+
+    if(isEmpty(npc.identity)){
+
+        if(npc.occupation){
+
+            npc.identity=npc.occupation;
+
+        }else{
+
+            npc.identity="待确认人物";
+
+        }
+
+    }
+
+
+
+    if(isEmpty(npc.location)){
+
+        npc.location="当前未知地点";
+
+    }
+
+
+}
+
+
+
+/* =========================
+   自动加入羁绊
+========================= */
+
+function ensureRelation(name,data){
+
+    try{
+
+
+        if(!window.state ||
+           !state.relations)
+            return;
+
+
+        if(!state.relations[name]){
+
+            state.relations[name]=
+                createNpcTemplate(name);
+
+        }
+
+
+        completeNpc(
+            state.relations[name],
+            data
+        );
+
+
+        state.relations[name].lastSeen=
+            state.time || "";
+
+
+    }catch(e){
+
+        console.warn('[V62] NPC建立失败',e);
+
+    }
+
+
+}
+
+
+
+
+
+/* =========================
+   AI数据扫描
+========================= */
+
+function processNpcData(data){
+
+
+    try{
+
+
+        if(!data)
+            return;
+
+
+
+        // npcUpdates
+
+        if(Array.isArray(data.npcUpdates)){
+
+
+            data.npcUpdates.forEach(function(npc){
+
+
+                if(!npc || !npc.name)
+                    return;
+
+
+                ensureRelation(
+                    npc.name,
+                    npc
+                );
+
+
+            });
+
+
+        }
+
+
+
+        // 新关系
+
+        if(
+            data.stateChanges &&
+            Array.isArray(
+                data.stateChanges.addRelation
+            )
+        ){
+
+
+            data.stateChanges.addRelation
+            .forEach(function(npc){
+
+
+                if(!npc || !npc.name)
+                    return;
+
+
+                ensureRelation(
+                    npc.name,
+                    npc
+                );
+
+
+            });
+
+
+        }
+
+
+
+    }catch(e){
+
+        console.warn('[V62] 数据处理失败',e);
+
+    }
+
+
+}
+
+
+
+
+/* =========================
+   hook applyAI
+========================= */
+
+
+if(
+ typeof window.applyAI==="function" &&
+ !window.applyAI.__v62
+){
+
+
+var oldApplyAI=window.applyAI;
+
+
+window.applyAI=function(data,action){
+
+
+    var result;
+
+
+    try{
+
+        result=
+        oldApplyAI.apply(this,arguments);
+
+
+    }catch(e){
+
+        throw e;
+
+    }
+
+
+
+    try{
+
+        processNpcData(data);
+
+
+    }catch(e){}
+
+
+
+    return result;
+
+
+};
+
+
+window.applyAI.__v62=true;
+
+
+}
+
+
+
+
+/* =========================
+   诊断
+========================= */
+
+
+window.v62Check=function(){
+
+    console.log(
+        "===== V62 NPC检查 ====="
+    );
+
+
+    Object.keys(
+        state.relations||{}
+    ).forEach(function(n){
+
+
+        var r=state.relations[n];
+
+
+        if(r && r._v62){
+
+            console.log(
+                n,
+                r
+            );
+
+        }
+
+
+    });
+
+
+};
+
+
+
+console.log(
+'%c[V62] NPC档案自动完善系统已启动',
+'color:#059669;font-weight:bold'
+);
+
+console.log(
+'输入 v62Check() 查看NPC资料'
+);
+
+
+})();
+/* ▲▲▲ V62 NPC档案自动完善与正文联动层 ▲▲▲ */
 </script>
 </body>
 </html>
