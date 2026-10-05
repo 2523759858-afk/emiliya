@@ -14672,6 +14672,518 @@ function genItemDesc_v11(name) {
   console.log('%c[V59] ✅ 原著时间线 + NPC序列/途径快照防回档已挂载（无 defineProperty）','color:#2563eb;font-weight:700');
 })();
 /* ▲▲▲ V59 ▲▲▲ */
+/*
+ * ▼▼▼ V60 · 世界运行 + 战斗/死亡 + 阿蒙玩家线 + 玩家分支（安全增量版） ▼▼▼
+ *
+ * 用法：粘贴到原 HTML 当前最后一个脚本结束标签之前。
+ * 不需要删除原有补丁；建议在 V59.1 之后粘贴。
+ *
+ * 安全设计：
+ * 1) 不使用 Object.defineProperty / Proxy / document.write。
+ * 2) 不重写 bindAll，不替换整页 DOM，只增量添加战斗/死亡面板。
+ * 3) 所有 hook 都有独立 guard；任何新增模块出错都 catch，不阻塞原游戏。
+ * 4) 不触碰 state.sourceResonance / sourceHeld / uniqueness / ascended。
+ * 5) 玩家死亡不会由 AI 单一句“你死了”直接成立，必须经过死亡裁决。
+ */
+(function(){
+  'use strict';
+  if (window.__V60_SAFE_GAMEPLAY__) return;
+  window.__V60_SAFE_GAMEPLAY__ = true;
+
+  var V60_PREFIX='[V60] ';
+
+  function clone(v){
+    try{return JSON.parse(JSON.stringify(v));}catch(e){return null;}
+  }
+  function toastSafe(s){ try{ if(typeof toast==='function') toast(s); }catch(e){} }
+  function addEntrySafe(tag,cls,text){ try{ if(typeof addEntry==='function') addEntry(tag,cls,text); }catch(e){} }
+  function byId(id){ try{return document.getElementById(id);}catch(e){return null;} }
+  function num(v,def){ var n=Number(v); return isFinite(n)?n:def; }
+  function seqNum(s){
+    var t=String(s||'');
+    var m=t.match(/序列\s*([0-9])/);
+    if(m) return parseInt(m[1],10);
+    if(/天使之王/.test(t)) return 1;
+    if(/真神/.test(t)) return 0;
+    return 99;
+  }
+  function currentDate(){
+    var s=String(state.time||'');
+    var m=s.match(/(\d{4})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日/);
+    if(!m) m=s.match(/(\d{4})[-\/]([0-9]{1,2})[-\/]([0-9]{1,2})/);
+    if(!m) return null;
+    return {y:+m[1],m:+m[2],d:+m[3]};
+  }
+  function reached(node,now){
+    if(!now) return false;
+    if(node.precision==='month') return (now.y*100+now.m)>=(node.date[0]*100+node.date[1]);
+    return (now.y*10000+now.m*100+now.d)>=(node.date[0]*10000+node.date[1]*100+node.date[2]);
+  }
+
+  /* ==================== 1. V60 世界事件基线 ==================== */
+  var WORLD_EVENTS=[
+    {
+      id:'V60-TINGEN-CATASTROPHE-1349-09', date:[1349,9,9], precision:'day', type:'大事',
+      title:'廷根灾变',
+      desc:'原著基线：廷根邪神子嗣事件进入终局，黑荆棘小队遭遇重大伤亡；默认结果包含邓恩牺牲与克莱恩死亡/复活后的离场。玩家若提前切断关键因果，可形成分支结果。'
+    },
+    {
+      id:'V60-BACKLUND-SMOG-1349-12', date:[1349,12,1], precision:'month', type:'大事',
+      title:'贝克兰德大雾霾阶段',
+      desc:'原著基线：贝克兰德进入大雾霾相关重大社会事件阶段，王室、魔女教派与后续乔治三世计划的因果链进一步收紧；玩家不在现场时事件仍会运行。'
+    },
+    {
+      id:'V60-INCE-ENDGAME-1350-06', date:[1350,6,1], precision:'month', type:'大事',
+      title:'因斯·赞格威尔终局阶段',
+      desc:'原著基线：因斯·赞格威尔主线进入终局阶段，廷根旧案与克莱恩的长期追索开始完成第一轮清算。'
+    },
+    {
+      id:'V60-WAR-1350-10', date:[1350,10,1], precision:'month', type:'大事',
+      title:'大战阶段开启',
+      desc:'原著基线：鲁恩与弗萨克的战争局势进入全面升级阶段，粮价、港口、军需、难民、教会行动与非凡者活动开始受到战争影响。'
+    },
+    {
+      id:'V60-GEORGE-1350-12-03', date:[1350,12,3], precision:'day', type:'大事',
+      title:'乔治三世成神计划终局',
+      desc:'原著基线：乔治三世的黑皇帝成神仪式进入终局；默认结果为仪式失败、乔治三世死亡。玩家若成功切断关键因果，可记录为玩家分支。'
+    }
+  ];
+
+  if(!state._v60WorldLog) state._v60WorldLog={};
+  if(!state._v60WorldFlags) state._v60WorldFlags={};
+
+  function getOverride(id){
+    try{
+      var a=state._worldTimelineLog||{};
+      var b=a[id];
+      if(b && b.override) return b.override;
+    }catch(e){}
+    return '';
+  }
+  function recordWorldEvent(ev,overrideText){
+    try{
+      if(!Array.isArray(state.worldEvents)) state.worldEvents=[];
+      var existing=state.worldEvents.filter(function(x){return x&&(x._v60Id===ev.id || (ev.id==='V60-GEORGE-1350-12-03' && x._v58Id==='V58-1350-12-03-george'));})[0];
+      var desc=overrideText ? ('【玩家分支】'+ev.title+'：'+overrideText) : ('【原著世界线】'+ev.desc);
+      if(existing){ existing.desc=desc; existing.v60Outcome=overrideText||'canon'; existing._v60Id=ev.id; }
+      else state.worldEvents.push({time:state.time||'',type:ev.type,desc:desc,_v60Id:ev.id,v60Outcome:overrideText||'canon'});
+    }catch(e){ console.warn(V60_PREFIX+'world event',e); }
+  }
+  function syncWorldEvents(){
+    var now=currentDate(); if(!now) return;
+    WORLD_EVENTS.forEach(function(ev){
+      if(!reached(ev,now)) return;
+      var log=state._v60WorldLog[ev.id] || (state._v60WorldLog[ev.id]={});
+      if(log.resolved) return;
+      var override=getOverride(ev.id);
+      if(override){
+        log.resolved=true; log.outcome=override; log.at=state.time||'';
+        state._v60WorldFlags[ev.id]=override;
+        recordWorldEvent(ev,override);
+      }else{
+        recordWorldEvent(ev,'');
+        log.resolved=true; log.outcome='canon'; log.at=state.time||'';
+        state._v60WorldFlags[ev.id]='canon';
+      }
+    });
+  }
+
+  function captureOverrides(data){
+    try{
+      if(!data) return;
+      var sc=data.stateChanges||{};
+      var list=[];
+      if(Array.isArray(sc.canonOverride)) list=list.concat(sc.canonOverride);
+      if(Array.isArray(sc.overrideTimeline)) list=list.concat(sc.overrideTimeline);
+      if(Array.isArray(data.canonOverride)) list=list.concat(data.canonOverride);
+      list.forEach(function(x){
+        if(!x) return;
+        var id=x.id;
+        if(id===undefined && x.index!==undefined) id='LEGACY-'+String(x.index);
+        if(id===undefined || id===null) return;
+        if(!state._worldTimelineLog) state._worldTimelineLog={};
+        if(!state._worldTimelineLog[id]) state._worldTimelineLog[id]={};
+        state._worldTimelineLog[id].override=String(x.newOutcome||x.outcome||x.reason||'玩家已改变该事件结果').slice(0,320);
+        state._worldTimelineLog[id].overriddenAt=state.time||'';
+      });
+    }catch(e){ console.warn(V60_PREFIX+'override',e); }
+  }
+
+  /* ==================== 2. V60 战斗状态 ==================== */
+  function ensureCombat(){
+    if(!state._v60Combat){
+      state._v60Combat={
+        active:false, enemyName:'', enemyHp:0, enemyMaxHp:0, enemyStatus:'', enemyPath:'', enemySeq:'',
+        turn:0, canFlee:true, lastOutcome:'', lastAction:'', startedAt:'', endedAt:''
+      };
+    }
+    return state._v60Combat;
+  }
+  function combatDataFrom(data){
+    if(!data) return null;
+    if(data.combat && typeof data.combat==='object') return data.combat;
+    if(data.stateChanges && data.stateChanges.combat && typeof data.stateChanges.combat==='object') return data.stateChanges.combat;
+    return null;
+  }
+
+  function normalizeCombat(cd){
+    var c=ensureCombat();
+    if(!cd) return c;
+    if(cd.active!==undefined) c.active=!!cd.active;
+    if(cd.enemyName!==undefined) c.enemyName=String(cd.enemyName||'');
+    if(cd.enemyHp!==undefined) c.enemyHp=Math.max(0,num(cd.enemyHp,c.enemyHp||0));
+    if(cd.enemyMaxHp!==undefined) c.enemyMaxHp=Math.max(0,num(cd.enemyMaxHp,c.enemyMaxHp||0));
+    if(cd.enemyStatus!==undefined) c.enemyStatus=String(cd.enemyStatus||'');
+    if(cd.enemyPath!==undefined) c.enemyPath=String(cd.enemyPath||'');
+    if(cd.enemySeq!==undefined) c.enemySeq=String(cd.enemySeq||'');
+    if(cd.canFlee!==undefined) c.canFlee=!!cd.canFlee;
+    if(cd.turn!==undefined) c.turn=Math.max(0,parseInt(cd.turn,10)||0);
+    if(cd.lastOutcome!==undefined) c.lastOutcome=String(cd.lastOutcome||'');
+    if(c.active && !c.startedAt) c.startedAt=state.time||'';
+    if(!c.active) c.endedAt=state.time||c.endedAt||'';
+    if(c.enemyMaxHp>0 && c.enemyHp>c.enemyMaxHp) c.enemyHp=c.enemyMaxHp;
+    return c;
+  }
+
+  /* ==================== 3. 玩家死亡裁决 ==================== */
+  function isDead(){ return !!state._v60Dead; }
+  function disablePlayerConversation(disabled){
+    try{
+      var inp=byId('actionInput'),btn=byId('execBtn');
+      if(inp){inp.disabled=disabled;inp.placeholder=disabled?'角色已死亡：无法继续行动':'输入你的行动或意志……';}
+      if(btn) btn.disabled=disabled;
+      var opts=byId('options');
+      if(opts) Array.prototype.forEach.call(opts.querySelectorAll('button'),function(b){b.disabled=disabled;});
+    }catch(e){}
+  }
+  function ensureDeathOverlay(){
+    if(byId('v60DeathOverlay')) return byId('v60DeathOverlay');
+    try{
+      var d=document.createElement('div');
+      d.id='v60DeathOverlay';
+      d.style.cssText='position:fixed;inset:0;z-index:100000;background:rgba(12,8,10,.94);display:none;align-items:center;justify-content:center;padding:20px;box-sizing:border-box;';
+      d.innerHTML='<div style="width:min(560px,92vw);background:#f4eee1;border:1px solid #8b6b42;border-radius:12px;padding:22px;box-shadow:0 20px 80px rgba(0,0,0,.45);text-align:center">'
+        +'<div style="font-size:32px;margin-bottom:8px">☠</div>'
+        +'<div style="font-size:22px;font-weight:800;color:#5d1f1f;letter-spacing:3px">命运终结</div>'
+        +'<div id="v60DeathReason" style="margin:14px 0;color:#6a6257;line-height:1.8"></div>'
+        +'<div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">'
+        +'<button id="v60DeathRollback" class="btn">↩ 回退最后一步</button>'
+        +'<button id="v60DeathSave" class="btn primary">💾 打开存档</button>'
+        +'</div>'
+        +'</div>';
+      document.body.appendChild(d);
+      var rb=byId('v60DeathRollback');
+      if(rb) rb.onclick=function(){try{ if(typeof rollbackStep==='function') rollbackStep(); if(!isDead()) hideDeathOverlay(); }catch(e){}};
+      var sv=byId('v60DeathSave');
+      if(sv) sv.onclick=function(){try{var b=byId('openSettingsBtn');if(b)b.click();var t=byId('setTabSave');if(t)t.click();}catch(e){}};
+      return d;
+    }catch(e){return null;}
+  }
+  function showDeathOverlay(){
+    var d=ensureDeathOverlay();
+    if(!d) return;
+    var rec=state._v60DeathRecord||{};
+    var r=byId('v60DeathReason');
+    if(r) r.textContent=(rec.reason||'你的生命已经走到尽头。')+' · '+(rec.time||state.time||'未知时间')+' · '+(rec.location||state.location||'未知地点');
+    d.style.display='flex';
+    disablePlayerConversation(true);
+  }
+  function hideDeathOverlay(){var d=byId('v60DeathOverlay');if(d)d.style.display='none';disablePlayerConversation(false);}
+
+  function canDeathBeAccepted(info){
+    if(!info) return false;
+    var candidate=!!info.deathCandidate;
+    var confirmed=!!info.deathConfirmed;
+    var lethal=num(info.fatality,0)>=3;
+    var reason=String(info.deathReason||'').trim();
+    var unavoidable=!!info.unavoidable;
+    return candidate && confirmed && lethal && !!reason && unavoidable;
+  }
+  function markDead(reason){
+    if(isDead()) return;
+    state._v60Dead=true;
+    state.dead=true;
+    state.hp=0;
+    state._v60DeathRecord={reason:String(reason||'致死事件'),time:state.time||'',location:state.location||'',at:Date.now()};
+    var c=ensureCombat(); c.active=false; c.lastOutcome='death'; c.endedAt=state.time||'';
+    addEntrySafe('命运终结','system','你已经死亡。\n原因：'+(reason||'未知')+'\n地点：'+(state.location||'未知')+'\n死亡后无法继续进行对话与行动。');
+    showDeathOverlay();
+  }
+  function applyDeathRules(data){
+    if(isDead()) return;
+    var cd=combatDataFrom(data);
+    var candidateInfo=null;
+    if(cd) candidateInfo=cd;
+    if(data && data.playerDeath) candidateInfo=data.playerDeath;
+    if(canDeathBeAccepted(candidateInfo)){
+      markDead(candidateInfo.deathReason);
+      return;
+    }
+    if(num(state.hp,1)<=0){
+      state.hp=1;
+      state._v60Critical=true;
+      addEntrySafe('濒死','system','你受到了足以让生命归零的重创，但死亡保护已将结果裁定为【濒死】。接下来必须尽快脱离危险。');
+    }
+  }
+
+  /* ==================== 4. 战斗 UI ==================== */
+  function ensureCombatPanel(){
+    var existing=byId('v60CombatPanel'); if(existing) return existing;
+    try{
+      var host=document.querySelector('.chat-area'); if(!host) return null;
+      var wrap=document.createElement('div');
+      wrap.id='v60CombatPanel';
+      wrap.style.cssText='display:none;margin:8px 0;padding:10px;border:1px solid rgba(139,107,66,.45);border-radius:10px;background:rgba(245,239,226,.96);box-shadow:0 6px 20px rgba(60,40,20,.06);';
+      wrap.innerHTML='<div style="display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap">'
+        +'<div style="font-weight:800;color:#6f4f2b">⚔ 当前交锋</div><div id="v60CombatStatus" style="font-size:11px;color:#6a6257"></div></div>'
+        +'<div id="v60CombatEnemy" style="font-size:12px;margin:7px 0;line-height:1.7"></div>'
+        +'<div style="display:flex;gap:6px;flex-wrap:wrap">'
+        +'<button class="btn small" data-v60act="观察">👁 观察</button>'
+        +'<button class="btn small" data-v60act="攻击">⚔ 攻击</button>'
+        +'<button class="btn small" data-v60act="使用能力">✨ 能力</button>'
+        +'<button class="btn small" data-v60act="防御">🛡 防御</button>'
+        +'<button class="btn small" data-v60act="逃跑">🏃 逃跑</button>'
+        +'<button class="btn small" data-v60act="交涉">🗣 交涉</button>'
+        +'</div>';
+      host.insertBefore(wrap,host.querySelector('.input-area'));
+      Array.prototype.forEach.call(wrap.querySelectorAll('button[data-v60act]'),function(b){
+        b.onclick=function(){
+          if(isDead()) return;
+          var act=b.getAttribute('data-v60act');
+          var inp=byId('actionInput'); if(inp) inp.value=act+'。';
+          try{if(typeof execute==='function') execute();}catch(e){}
+        };
+      });
+      return wrap;
+    }catch(e){return null;}
+  }
+  function renderCombatPanel(){
+    var c=ensureCombat();
+    var p=ensureCombatPanel(); if(!p) return;
+    if(!c.active || isDead()){p.style.display='none';return;}
+    p.style.display='block';
+    var st=byId('v60CombatStatus');
+    if(st) st.textContent='第 '+(c.turn||1)+' 轮 · '+(c.lastOutcome||'战斗中');
+    var e=byId('v60CombatEnemy');
+    if(e){
+      var hp=(c.enemyMaxHp>0)?('HP '+c.enemyHp+'/'+c.enemyMaxHp):'HP 未知';
+      e.innerHTML='<strong>敌人：</strong>'+(c.enemyName||'未知')
+        +' · '+(c.enemySeq||'位格未知')+' · '+(c.enemyPath||'途径未知')
+        +'<br><strong>状态：</strong>'+(c.enemyStatus||'未知')+' · '+hp;
+    }
+  }
+
+  /* ==================== 5. 阿蒙：玩家专属动态线 ==================== */
+  function ensureAmon(){
+    if(!state._v60Amon){
+      state._v60Amon={attention:0,mode:'distant',lastContact:'',encounters:0,lastTrick:'',notes:[],playerTurns:0};
+    }
+    return state._v60Amon;
+  }
+  function updateAmonInterest(action){
+    var a=ensureAmon(), s=String(action||'');
+    a.playerTurns=(a.playerTurns||0)+1;
+    a.attention=Math.max(0,(a.attention||0)-0.15);
+    if(/阿蒙|单片眼镜|时之虫|错误途径|偷盗者途径/.test(s)) a.attention+=5;
+    if(/源堡|诡秘之主|愚者|唯一性|旧日|天使|真神/.test(s)) a.attention+=2.5;
+    if(/偷|盗|伪造身份|假身份|欺骗|冒充|秘密|陷阱/.test(s)) a.attention+=1.5;
+    var pn=seqNum(state.seq); if(pn<=4) a.attention+=0.25;
+    if(a.attention>=9 && a.mode==='distant') a.mode='curious';
+    if(a.attention>=16 && a.mode==='curious') a.mode='playful';
+    if(a.attention>=24) a.mode='interested';
+  }
+  function noteAmonFromAI(data){
+    try{
+      var txt='';
+      if(data&&data.narrative) txt=[data.narrative.scene,data.narrative.result,data.narrative.world].join('\n');
+      if(/阿蒙|单片眼镜/.test(String(txt))){
+        var a=ensureAmon(); a.lastContact=state.time||''; a.encounters=(a.encounters||0)+1; a.attention=Math.max(a.attention||0,7); a.lastTrick=String(txt).slice(-180); a.notes=(a.notes||[]).slice(-4); a.notes.push({time:state.time||'',note:'AI叙事出现阿蒙/单片眼镜'});
+      }
+    }catch(e){}
+  }
+  function amonPrompt(){
+    var a=ensureAmon();
+    return '\n\n【V60·阿蒙玩家线】\n'
+      +'原著固定线：阿蒙对克莱恩的原著追逐属于世界基线，不因玩家位置消失。\n'
+      +'玩家专属线：除克莱恩线外，不要给玩家预设固定“阿蒙剧情表”，只根据玩家行为与真实可得信息动态决定。\n'
+      +'阿蒙不是全知：只能知道观察、分身、偷盗、欺骗、调查或合理推理得到的信息。\n'
+      +'当前对玩家注意度：'+Math.round(a.attention||0)+'/30；模式：'+a.mode+'；近次直接接触：'+(a.lastContact||'无')+'。\n'
+      +'当注意度不足时，不要为了热闹强行让阿蒙登场。达到较高注意度后，可以自然出现恶作剧、偷盗、试探、交易、误导、暂时合作、分身接触或撤退中的任一种；不必每次都战斗。\n'
+      +'阿蒙可以被玩家欺骗、利用、误导和反制；不得为了推动剧情而故意犯蠢。\n'
+      +'阿蒙一般不直接秒杀玩家；除非满足明确的高位格、完整因果、不可避免致死条件，否则玩家应留下脱身或反制空间。\n';
+  }
+
+  /* ==================== 6. Prompt 增量 ==================== */
+  function worldPrompt(){
+    var now=currentDate();
+    var lines=['【V60·当前世界后台】'];
+    WORLD_EVENTS.forEach(function(ev){
+      if(!now) return;
+      var passed=reached(ev,now);
+      var log=state._v60WorldLog[ev.id]||{};
+      if(passed && !log.resolved){ lines.push('已到达但尚未结算：'+ev.id+' · '+ev.title+'。若玩家已成功干预，必须记录 stateChanges.canonOverride；否则按原著基线继续。'); }
+      else if(passed && log.resolved){ lines.push('已结算：'+ev.id+' → '+String(log.outcome||'canon')); }
+      else if((ev.date[0]===now.y && ev.date[1]<=now.m+1) || ev.date[0]===now.y-0 && ev.date[1]===now.m){
+        lines.push('临近事件：'+ev.id+' · '+ev.title+'；不要强制弹窗，只可通过世界消息、传闻、组织行动或因果影响自然表现。');
+      }
+    });
+    return lines.join('\n');
+  }
+  function combatPrompt(){
+    var c=ensureCombat();
+    if(!c.active) return '\n【V60·当前战斗】当前没有正式战斗，不要凭空进入战斗 UI。';
+    return '\n【V60·当前战斗】\n敌人：'+(c.enemyName||'未知')+'\n敌方HP：'+(c.enemyHp||0)+'/'+(c.enemyMaxHp||'未知')+'\n敌方状态：'+(c.enemyStatus||'未知')+'\n敌方途径：'+(c.enemyPath||'未知')+'\n敌方序列：'+(c.enemySeq||'未知')+'\n当前轮次：'+(c.turn||1)+'\n玩家HP：'+state.hp+'/'+state.maxHp+'；灵性/MP：'+state.mp+'/'+state.maxMp+'；理智：'+state.sanity+'/'+state.maxSanity+'\n战斗中优先考虑逃跑、观察、欺骗、谈判、布置与能力组合，不要把战斗强制写成站桩互殴。';
+  }
+  function gameplayPrompt(){
+    return '\n\n【V60·世界运行/战斗/死亡/分支铁律】\n'
+      +'一、玩家主位：玩家是游戏主角。允许失败、受伤和长期后果，但普通情况下不要轻率杀死玩家。\n'
+      +'二、原著事件：世界按日期自动运行；玩家不在现场时事件仍会发生，可通过报纸、传闻、NPC反应、价格、组织行动、后续结果被发现，不强制弹窗。\n'
+      +'三、玩家干预：只有真正完成因果链的行动才能改变原著事件；成功后在 stateChanges.canonOverride 返回 [{"id":"事件ID","newOutcome":"玩家改变后的结果"}]；失败则原著继续。不得因为玩家一句“我阻止了”就认定成功。\n'
+      +'四、局部因果：改变一个 NPC 不等于全世界自动改史，只传播到存在真实因果链的对象。\n'
+      +'五、战斗：combat.active=true 才进入正式战斗。建议返回：{"active":true,"enemyName":"","enemyHp":0,"enemyMaxHp":0,"enemyStatus":"","enemyPath":"","enemySeq":"","turn":1,"canFlee":true,"lastOutcome":"","outcome":""}。战斗应考虑序列/位格、途径能力、情报、距离、地形、准备和非凡物品，而不是纯攻击力。\n'
+      +'六、死亡：HP归零通常先判为濒死，不得仅凭一句“你死了”结束。只有存在明确、不可避免、真实致死条件时才返回 deathCandidate=true、deathConfirmed=true、fatality>=3、unavoidable=true、deathReason；不要为了制造戏剧性提高 fatality。\n'
+      +'七、死亡后：玩家不能继续对话或普通行动。除合法世界机制外不得自行复活；前端会提供回退/读档。\n'
+      +'八、NPC序列：已有“序列X·名称”不要改名；旧时间线不得无理由把更高位阶（更小数字）的当前状态降回去。\n'
+      +'九、阿蒙：除原著中追逐克莱恩的固定世界线外，阿蒙对玩家没有预设剧情表；他的玩家线由玩家行为、信息暴露和世界状态动态生成。不要全知，不要无理由秒杀，不要每次都战斗。';
+  }
+
+  try{
+    if(typeof GM_SYSTEM==='string' && GM_SYSTEM.indexOf('V60·世界运行/战斗/死亡/分支铁律')<0){
+      GM_SYSTEM += gameplayPrompt();
+    }
+  }catch(e){ console.warn(V60_PREFIX+'GM_SYSTEM',e); }
+
+  /* ==================== 7. applyAI：最小增量 hook ==================== */
+  if(typeof window.applyAI==='function' && !window.applyAI.__v60GameplayHook){
+    var oldApply=window.applyAI;
+    window.applyAI=function(data,action){
+      var result;
+      try{ captureOverrides(data); }catch(e){}
+      try{ result=oldApply.apply(this,arguments); }catch(e){ throw e; }
+      try{
+        var cd=combatDataFrom(data);
+        if(cd) normalizeCombat(cd);
+        if(cd && cd.active===false && cd.outcome){
+          var cc=ensureCombat(); cc.lastOutcome=String(cd.outcome); cc.active=false;
+        }
+        applyDeathRules(data);
+        noteAmonFromAI(data);
+        syncWorldEvents();
+        renderCombatPanel();
+        if(isDead()) showDeathOverlay();
+      }catch(e){ console.warn(V60_PREFIX+'applyAI reconcile',e); }
+      return result;
+    };
+    window.applyAI.__v60GameplayHook=true;
+  }
+
+  /* ==================== 8. execute：死亡拦截 + 动态阿蒙 ==================== */
+  if(typeof window.execute==='function' && !window.execute.__v60GameplayHook){
+    var oldExecute=window.execute;
+    window.execute=async function(){
+      if(isDead()){ toastSafe('你已经死亡，无法继续对话。请回退或读取存档。'); return; }
+      var inp=byId('actionInput');
+      var action=inp?String(inp.value||'').trim():'';
+      updateAmonInterest(action);
+      ensureAmon();
+      var baseGM=null;
+      try{
+        if(typeof GM_SYSTEM==='string'){
+          baseGM=GM_SYSTEM;
+          GM_SYSTEM=baseGM+amonPrompt()+worldPrompt()+combatPrompt();
+        }
+        return await oldExecute.apply(this,arguments);
+      }finally{
+        try{ if(baseGM!==null) GM_SYSTEM=baseGM; }catch(e){}
+        try{ renderCombatPanel(); if(isDead()) showDeathOverlay(); }catch(e){}
+      }
+    };
+    window.execute.__v60GameplayHook=true;
+  }
+
+  /* ==================== 9. UI hook ==================== */
+  if(typeof window.renderUI==='function' && !window.renderUI.__v60GameplayHook){
+    var oldRender=window.renderUI;
+    window.renderUI=function(){
+      var result;
+      try{ result=oldRender.apply(this,arguments); }
+      finally{
+        try{ renderCombatPanel(); if(isDead()) showDeathOverlay(); else hideDeathOverlay(); }catch(e){}
+      }
+      return result;
+    };
+    window.renderUI.__v60GameplayHook=true;
+  }
+
+  /* ==================== 10. 存档/读档/重置 ==================== */
+  function saveV60(s){
+    try{
+      if(!s.system) s.system={};
+      s.system._v60Gameplay={
+        worldLog:clone(state._v60WorldLog)||{},
+        worldFlags:clone(state._v60WorldFlags)||{},
+        combat:clone(state._v60Combat)||null,
+        dead:!!state._v60Dead,
+        deathRecord:clone(state._v60DeathRecord)||null,
+        critical:!!state._v60Critical,
+        amon:clone(state._v60Amon)||null
+      };
+    }catch(e){}
+  }
+  function loadV60(d){
+    try{
+      var x=d&&d.system&&d.system._v60Gameplay;
+      if(x){
+        state._v60WorldLog=x.worldLog||{};
+        state._v60WorldFlags=x.worldFlags||{};
+        state._v60Combat=x.combat||null;
+        state._v60Dead=!!x.dead;
+        state.dead=state._v60Dead;
+        state._v60DeathRecord=x.deathRecord||null;
+        state._v60Critical=!!x.critical;
+        state._v60Amon=x.amon||null;
+      }else{
+        state._v60WorldLog={}; state._v60WorldFlags={}; state._v60Combat=null; state._v60Dead=false; state.dead=false; state._v60DeathRecord=null; state._v60Critical=false; state._v60Amon=null;
+      }
+      ensureCombat(); ensureAmon(); syncWorldEvents();
+      if(isDead()) showDeathOverlay(); else hideDeathOverlay();
+      renderCombatPanel();
+    }catch(e){ console.warn(V60_PREFIX+'load',e); }
+  }
+  if(typeof window.buildSave==='function' && !window.buildSave.__v60GameplaySave){
+    var oldBuild=window.buildSave;
+    window.buildSave=function(){ var s=oldBuild.apply(this,arguments); saveV60(s); return s; };
+    window.buildSave.__v60GameplaySave=true;
+  }
+  if(typeof window.applySave==='function' && !window.applySave.__v60GameplaySave){
+    var oldSave=window.applySave;
+    window.applySave=function(d){ var r=oldSave.apply(this,arguments); loadV60(d); return r; };
+    window.applySave.__v60GameplaySave=true;
+  }
+  if(typeof window.resetWorldState==='function' && !window.resetWorldState.__v60GameplayReset){
+    var oldReset=window.resetWorldState;
+    window.resetWorldState=function(){
+      var r=oldReset.apply(this,arguments);
+      try{
+        state._v60WorldLog={}; state._v60WorldFlags={}; state._v60Combat={active:false,enemyName:'',enemyHp:0,enemyMaxHp:0,enemyStatus:'',enemyPath:'',enemySeq:'',turn:0,canFlee:true,lastOutcome:'',lastAction:'',startedAt:'',endedAt:''};
+        state._v60Dead=false; state.dead=false; state._v60DeathRecord=null; state._v60Critical=false; state._v60Amon={attention:0,mode:'distant',lastContact:'',encounters:0,lastTrick:'',notes:[],playerTurns:0};
+        hideDeathOverlay(); renderCombatPanel();
+      }catch(e){}
+      return r;
+    };
+    window.resetWorldState.__v60GameplayReset=true;
+  }
+
+  /* ==================== 11. 初始安全状态 ==================== */
+  try{
+    ensureCombat(); ensureAmon(); syncWorldEvents(); ensureDeathOverlay();
+    if(isDead()) showDeathOverlay(); else hideDeathOverlay();
+    renderCombatPanel();
+  }catch(e){ console.warn(V60_PREFIX+'boot',e); }
+
+  console.log('%c[V60] ✅ 世界运行/战斗/死亡/阿蒙玩家线已安全挂载','color:#7c3aed;font-weight:700');
+})();
+/* ▲▲▲ V60 ▲▲▲ */
 
 </script>
 </body>
