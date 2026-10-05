@@ -14134,8 +14134,16 @@ function genItemDesc_v11(name) {
 })();
 /* ▲▲▲ V51.5 ▲▲▲ */
 /*
- * ▼▼▼ V59 · 原著时间线 + NPC序列/途径事实层（安全重写版） ▼▼▼
- * 与 V59 原版 100% 一致，唯一改动：unifiedRequest 原地追加，不重建对象
+ * ▼▼▼ V59 · 原著时间线 + NPC序列/途径事实层（无属性劫持版） ▼▼▼
+ *
+ * 用法：整体粘贴到原 HTML 最后一个脚本结束标签之前。
+ *
+ * 本版只处理：
+ * 1) 原著剧情/时间线：用 V58 核心里程碑覆盖旧 V8/V32 错误结果。
+ * 2) NPC 序列/途径：快照 + 恢复 + 规范化，阻止旧时间线回档。
+ *
+ * 明确不处理：源质、记忆、地图、背包、玩家数值、UI结构等。
+ * 不使用 Object.defineProperty / getter / setter / Proxy。
  */
 (function(){
   'use strict';
@@ -14155,6 +14163,8 @@ function genItemDesc_v11(name) {
     '特莉丝':'特莉丝','乔治三世':'乔治三世','因斯·赞格威尔':'因斯·赞格威尔'
   };
 
+  // 仅在“完整字段名/结构化 NPC 名称”中允许的短别名；不参与叙事全文扫描。
+  // 这样既兼容 AI 用“休”指代休·迪尔查，又避免“休息的旅人”等文本误命中。
   var EXACT_NAME_CANON = { '休':'休·迪尔查' };
 
   var KNOWN_PATH = {
@@ -14164,6 +14174,8 @@ function genItemDesc_v11(name) {
     '莎伦':'囚犯','苏茜':'观众','特莉丝':'刺客','乔治三世':'律师'
   };
 
+  /* 只用于“数字序列缺名字”时补全。
+     已经存在“序列X·某名称”的旧存档，不主动改名，避免 V53/世界书旧称被重命名。 */
   var PATH_SEQ = {
     '占卜家':['愚者','诡秘侍者','奇迹师','古代学者','诡法师','秘偶大师','无面人','魔术师','小丑','占卜家'],
     '学徒':['门','知识之妖','旅法师','漫游者','秘法师','旅行家','记录官','占星人','戏法大师','学徒'],
@@ -14195,6 +14207,7 @@ function genItemDesc_v11(name) {
       if (name && !NAME_TO_PATH[name]) NAME_TO_PATH[name]=path;
     });
   });
+  // 用户自定义“魔女”当前状态允许保留为途径名；这些称谓只用于反查。
   ['魔女','女巫','欢愉','痛苦','绝望','灾难','末日','不老魔女','欢愉魔女','痛苦魔女','绝望魔女'].forEach(function(n){
     NAME_TO_PATH[n]='刺客';
   });
@@ -14263,6 +14276,7 @@ function genItemDesc_v11(name) {
     });
   }
 
+  /* ---------- 权威事实：只保存“已经确认”的最高位阶 ---------- */
   function seedFacts(){
     var facts=ensureFacts();
     Object.keys(state.relations||{}).forEach(function(name){
@@ -14291,6 +14305,7 @@ function genItemDesc_v11(name) {
     if (!path && parsed.name) path=NAME_TO_PATH[parsed.name] || '';
 
     if (nowN!==99){
+      // 已经存在完整名称时，原样保留，绝不重命名旧档案。
       if (parsed.num===nowN && parsed.name) r.seq=buildSeq(nowN,parsed.name);
       else {
         var nm=seqName(path,nowN);
@@ -14340,6 +14355,7 @@ function genItemDesc_v11(name) {
     r.status=incoming; f.status=incoming; f.statusSource=source||'fact';
   }
 
+  /* ---------- 原著核心里程碑 ---------- */
   var CANON=[
     {id:'V58-1349-06-28-tarot',date:[1349,6,28],type:'tarot',add:['克莱恩·莫雷蒂','奥黛丽·霍尔','阿尔杰·威尔逊'],note:'塔罗会初创，克莱恩、奥黛丽、阿尔杰首次聚会。'},
     {id:'V58-1349-07-02-klein-s9',date:[1349,7,2],type:'npc',npcs:[{name:'克莱恩·莫雷蒂',path:'占卜家',seq:'序列9'}],note:'克莱恩成为序列9占卜家。'},
@@ -14363,7 +14379,7 @@ function genItemDesc_v11(name) {
     {id:'V58-1350-09-28-core',date:[1350,9,28],type:'npc',npcs:[{name:'莎伦',path:'囚犯',seq:'序列4·木偶'},{name:'佛尔思·沃尔',seq:'序列6'},{name:'阿尔杰·威尔逊',seq:'序列6'},{name:'戴里克·伯格',seq:'序列5'}],note:'核心成员阶段性晋升推进。'},
     {id:'V58-1350-10-03-leonard-s5',date:[1350,10,3],type:'npc',npcs:[{name:'伦纳德·米切尔',seq:'序列5'}],note:'伦纳德晋升序列5。'},
     {id:'V58-1350-10-07-audrey-s5',date:[1350,10,7],type:'npc',npcs:[{name:'奥黛丽·霍尔',seq:'序列5'}],note:'奥黛丽晋升序列5梦境行者。'},
-    {id:'V58-1350-11-klein-s3',date:[1350,11,1],precision:'month',type:'npc',npcs:[{name:'克莱恩·莫雷蒂',seq:'序列3'}],note:'1350年11月期间，克莱恩晋升序列3古代学者（月份阈值）。'},
+    {id:'V58-1350-11-klein-s3',date:[1350,11,1],precision:'month',type:'npc',npcs:[{name:'克莱恩·莫雷蒂',seq:'序列3'}],note:'1350年11月期间，克莱恩晋升序列3古代学者；此节点只按“月份阈值”结算。'},
     {id:'V58-1350-12-03-george',date:[1350,12,3],type:'world',npcs:[{name:'乔治三世',status:'死亡'}],note:'乔治三世成神仪式失败并死亡。'},
     {id:'V58-1350-12-22-audrey-s4-susie-s6',date:[1350,12,22],type:'npc',npcs:[{name:'奥黛丽·霍尔',seq:'序列4'},{name:'苏茜',seq:'序列6'}],note:'奥黛丽晋升序列4；苏茜晋升序列6。'},
     {id:'V58-1351-09-15-alger-derrick-s4',date:[1351,9,15],type:'npc',npcs:[{name:'戴里克·伯格',seq:'序列4'},{name:'阿尔杰·威尔逊',seq:'序列4'}],note:'戴里克与阿尔杰晋升序列4。'},
@@ -14428,6 +14444,7 @@ function genItemDesc_v11(name) {
     });
   }
 
+  /* ---------- AI 事实 ---------- */
   function structuredFacts(data){
     var out=[]; if(!data) return out;
     function take(u){
@@ -14453,8 +14470,8 @@ function genItemDesc_v11(name) {
       var c=NAME_CANON[alias]; if(seen[c]) return; seen[c]=1;
       var esc=alias.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
       var patterns=[
-        new RegExp(esc+'[^。！？\\n]{0,30}(?:晋升|提升至|提升为|突破至|成为|现在是|已经是|目前是|如今是|是)[^。！？\\n]{0,18}(序列\\s*[0-9](?:\\s*[·•・\\.\\-:]\\s*[^。！？\\n，、]{1,18})?)','g'),
-        new RegExp('(序列\\s*[0-9](?:\\s*[·•・\\.\\-:]\\s*[^。！？\\n，、]{1,18})?)[^。！？\\n]{0,18}'+esc,'g')
+        new RegExp(esc+'[^。！？\\n]{0,30}(?:晋升|提升至|提升为|突破至|成为|现在是|已经是|目前是|如今是|是)[^。！？\\n]{0,18}(序列\\s*[0-9](?:\\s*[·•・\.\-:]\\s*[^。！？\\n，、]{1,18})?)','g'),
+        new RegExp('(序列\\s*[0-9](?:\\s*[·•・\.\-:]\\s*[^。！？\\n，、]{1,18})?)[^。！？\\n]{0,18}'+esc,'g')
       ];
       patterns.forEach(function(re){
         var m; while((m=re.exec(text))!==null){ if(seqN(m[1])!==99) out.push({name:c,seq:m[1],source:'narrative'}); }
@@ -14478,7 +14495,9 @@ function genItemDesc_v11(name) {
       r._v58Name=name;
       if(f.seqNum!==undefined && f.seqNum!==99){
         var now=seqN(r.seq);
+        // 只回滚“位阶更低/未知”的旧写入；当前若已是更高位阶（数字更小），必须保留。
         if(now===99 || now>f.seqNum) r.seq=f.seqText||buildSeq(f.seqNum,seqName(r.path,f.seqNum));
+        // 名称缺失时可补名；绝不因为名字不同而把更高位阶覆盖回旧快照。
         if(seqN(r.seq)===f.seqNum && !parseSeq(r.seq).name){
           var keepName=parseSeq(f.seqText).name||seqName(r.path,f.seqNum);
           if(keepName) r.seq=buildSeq(f.seqNum,keepName);
@@ -14490,6 +14509,7 @@ function genItemDesc_v11(name) {
     });
   }
 
+  /* ---------- override ---------- */
   function captureOverride(data){
     var sc=data&&data.stateChanges; if(!sc) return;
     var list=[];
@@ -14500,6 +14520,7 @@ function genItemDesc_v11(name) {
     list.forEach(function(x){ if(x.id===undefined||x.id===null) return; if(!state._worldTimelineLog[x.id]) state._worldTimelineLog[x.id]={}; state._worldTimelineLog[x.id].override=String(x.newOutcome||'玩家已改变该事件结果').slice(0,240); state._worldTimelineLog[x.id].overriddenAt=state.time||''; });
   }
 
+  /* ---------- 最终同步：applyAI ---------- */
   if(typeof window.applyAI==='function' && !window.applyAI.__v59NpcHook){
     var oldApply=window.applyAI;
     window.applyAI=function(data,action){
@@ -14519,9 +14540,11 @@ function genItemDesc_v11(name) {
     window.applyAI.__v59NpcHook=true;
   }
 
+  /* ---------- renderUI：旧 V32 允许运行，但每次输出后恢复最终事实 ---------- */
   if(typeof window.renderUI==='function' && !window.renderUI.__v59NpcHook){
     var oldRender=window.renderUI;
     window.renderUI=function(){
+      // 预阶段只结算/恢复已有事实，不在旧 V32 写入之前把新脏值 seed 进去。
       try{ syncCanon(); restoreFacts(); normalizeAll(); }catch(e){}
       var result=oldRender.apply(this,arguments);
       try{
@@ -14533,6 +14556,7 @@ function genItemDesc_v11(name) {
     window.renderUI.__v59NpcHook=true;
   }
 
+  /* ---------- 单独钩关系面板/角色弹窗，保证玩家看到的是恢复后的值 ---------- */
   if(typeof window.renderRel==='function' && !window.renderRel.__v59RelHook){
     var oldRel=window.renderRel;
     window.renderRel=function(){
@@ -14550,6 +14574,7 @@ function genItemDesc_v11(name) {
     window.openCharModal.__v59CharHook=true;
   }
 
+  /* ---------- 安全存档：事实层单独保存 ---------- */
   if(typeof window.buildSave==='function' && !window.buildSave.__v59SaveHook){
     var oldBuild=window.buildSave;
     window.buildSave=function(){
@@ -14580,60 +14605,40 @@ function genItemDesc_v11(name) {
     window.resetWorldState.__v59ResetHook=true;
   }
 
-  // ══════════ 唯一改动处：原地追加，不重建 body/messages ══════════
-  function v59PromptText(){
-    return '【V59·原著时间线权威层】\n' +
-      '旧 V8/V32 时间线表属于遗留资料，不得作为 NPC 当前状态的最终事实来源。\n' +
-      '原著节点会按当前日期后台推进；玩家不在现场不等于事件暂停。\n' +
-      '已确认的 NPC 更高位阶优先于旧时间线；允许合法晋升，旧时间线不得无理由降级。\n' +
-      'AI 正文明确写出人物"晋升/成为/现在是/已经是"等当前序列时，应同步为事实；结构化 npcUpdates/addRelation 同样有效。\n' +
-      '已有"序列X·名称"时必须保留名称，不要把它压缩成只有数字。';
+  /* ---------- API 层：只追加 V58 权威规则，不删除/重写其他系统 prompt ---------- */
+  function prompt(){
+    var lines=['【V59·原著时间线权威层】','旧 V8/V32 时间线表属于遗留资料，不得作为 NPC 当前状态的最终事实来源。',
+      '原著节点会按当前日期后台推进；玩家不在现场不等于事件暂停。',
+      '已确认的 NPC 更高位阶优先于旧时间线；允许合法晋升，旧时间线不得无理由降级。',
+      'AI 正文明确写出人物“晋升/成为/现在是/已经是”等当前序列时，应同步为事实；结构化 npcUpdates/addRelation 同样有效。',
+      '已有“序列X·名称”时必须保留名称，不要把它压缩成只有数字。'];
+    return lines.join('\n');
   }
   if(typeof window.unifiedRequest==='function' && !window.unifiedRequest.__v59PromptHook){
     var oldReq=window.unifiedRequest;
     window.unifiedRequest=async function(url,key,body,timeout){
       try{
-        if(body && Array.isArray(body.messages)){
-          var txt = v59PromptText();
-          var added = false;
-          // 1) 找第一条 system 就地追加
-          for(var i=0;i<body.messages.length;i++){
-            var m = body.messages[i];
-            if(!m) continue;
-            if(typeof m.content === 'string' && m.content.indexOf('【V59·原著时间线权威层】') >= 0){
-              added = true; break;
-            }
-            if(m.role === 'system' && typeof m.content === 'string'){
-              m.content = m.content + '\n\n' + txt;
-              added = true;
-              break;
-            }
-          }
-          // 2) 没有 system 就找最后一条 user
-          if(!added){
-            for(var j=body.messages.length-1;j>=0;j--){
-              var m2 = body.messages[j];
-              if(m2 && m2.role === 'user' && typeof m2.content === 'string'){
-                m2.content = m2.content + '\n\n' + txt;
-                added = true;
-                break;
-              }
-            }
-          }
-          // 3) 一条都没有就头部插入（原数组上 push 后 shift）
-          if(!added){
-            body.messages.unshift({ role:'system', content: txt });
-          }
+        if(body&&Array.isArray(body.messages)){
+          var b={}; Object.keys(body).forEach(function(k){b[k]=body[k];});
+          b.messages=body.messages.map(function(m){ var x={}; Object.keys(m||{}).forEach(function(k){x[k]=m[k];}); return x; });
+          var added=false;
+          for(var i=0;i<b.messages.length;i++) if(b.messages[i].role==='system'){ b.messages[i].content=String(b.messages[i].content||'')+'\n\n'+prompt(); added=true; break; }
+          for(var j=b.messages.length-1;j>=0;j--) if(b.messages[j].role==='user'){ b.messages[j].content=String(b.messages[j].content||'')+'\n\n'+prompt(); break; }
+          if(!added) b.messages.unshift({role:'system',content:prompt()});
+          return oldReq.call(this,url,key,b,timeout);
         }
-      }catch(e){ console.warn('[V59] prompt append:',e); }
+      }catch(e){ console.warn('[V59] prompt hook:',e); }
       return oldReq.call(this,url,key,body,timeout);
     };
     window.unifiedRequest.__v59PromptHook=true;
   }
 
+  /* ---------- 启动修复 ---------- */
   try{
     mergeAliases();
     if(!state._worldTimelineLog) state._worldTimelineLog={};
+    // 启动时先结算当前日期的原著里程碑，再把最终状态写入事实账本。
+    // 这样旧 V8/V32 留下的脏序列不会先一步被 seedFacts 锁死。
     syncCanon();
     normalizeAll();
     seedFacts();
@@ -14650,6 +14655,8 @@ function genItemDesc_v11(name) {
     console.table(out);
     return out;
   };
+  // 手动确认/锚定一次真值；适用于既不是当前日期原著节点、又需要人工纠正的分支事实。
+  // 普通更高位阶升级无需调用它：V59 的恢复规则会保留数字更小（更高）的当前值，并同步进事实账本。
   window.v58Anchor=function(name,seq,path){
     try{
       var r=ensureRel(name), c=canon(name), f=ensureFacts()[c] || (ensureFacts()[c]={});
@@ -14662,9 +14669,10 @@ function genItemDesc_v11(name) {
       return {name:c,seq:r.seq,path:r.path};
     }catch(e){ console.warn('[V59] anchor:',e); return null; }
   };
-  console.log('%c[V59] ✅ 原著时间线 + NPC序列/途径快照防回档已挂载（原地追加版）','color:#2563eb;font-weight:700');
+  console.log('%c[V59] ✅ 原著时间线 + NPC序列/途径快照防回档已挂载（无 defineProperty）','color:#2563eb;font-weight:700');
 })();
-/* ▲▲▲ V59 安全重写版 ▲▲▲ */
+/* ▲▲▲ V59 ▲▲▲ */
+
 </script>
 </body>
 </html>
