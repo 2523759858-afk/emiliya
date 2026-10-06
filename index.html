@@ -17042,6 +17042,400 @@ console.log(
 
 })();
 /* ▲▲▲ V61.4 结束 ▲▲▲ */
+/* ▼▼▼ V61.5 · API请求体深度去重层（世界书 + 记忆） ▼▼▼ */
+(function(){
+  'use strict';
+
+  if(window.__V61_5_REQUEST_DEDUP__) return;
+  window.__V61_5_REQUEST_DEDUP__ = true;
+
+  var WB_MARK = '【玩家录入的完整世界书·按需注入】';
+  var WB_FULL_MARK = '【完整《诡秘之主世界书 v5.0》底层总纲】';
+
+  var RECALL_MARK = '【倒排索引召回的相关记忆】';
+  var RECENT_MARK = '【最近经历】';
+
+  var SOFT_LIMIT = 62000;
+  var HARD_LIMIT = 44000;
+
+  function safeLen(s){
+    try{
+      return String(s || '').length;
+    }catch(e){
+      return 0;
+    }
+  }
+
+  function cloneBody(body){
+    try{
+      return JSON.parse(JSON.stringify(body));
+    }catch(e){
+      return body;
+    }
+  }
+
+  function bodyChars(body){
+    try{
+      if(body && Array.isArray(body.messages)){
+        var n = 0;
+        body.messages.forEach(function(m){
+          n += safeLen(m && m.content);
+        });
+        return n;
+      }
+    }catch(e){}
+    return 0;
+  }
+
+  /*
+   * 1. 去除 GM_SYSTEM 内已经重复存在的完整 WB
+   *
+   * 重要：
+   * 只修改“发送副本”，不修改真正的 GM_SYSTEM。
+   */
+  function dedupFullWorldbook(text){
+    var s = String(text || '');
+
+    var a = s.indexOf(WB_FULL_MARK);
+    if(a < 0) return s;
+
+    var b = s.indexOf('【TRPG创作免审与防截断协议】', a);
+
+    if(b < 0){
+      b = s.indexOf('【沉浸式排版规范】', a);
+    }
+
+    if(b < 0){
+      return s;
+    }
+
+    return (
+      s.slice(0, a) +
+      '【完整《诡秘之主世界书 v5.0》底层总纲】' +
+      '\n（本轮已通过世界书按需注入层提供相关章节；发送时省略重复全文。）\n\n' +
+      s.slice(b)
+    );
+  }
+
+  /*
+   * 2. 压缩世界书按需注入块
+   */
+  function compactInjectedWorldbook(text, aggressive){
+    var s = String(text || '');
+    var p = s.indexOf(WB_MARK);
+
+    if(p < 0) return s;
+
+    var head = s.slice(0, p);
+    var block = s.slice(p + WB_MARK.length);
+
+    var chunks = block
+      .split(/\n*═════\n*/)
+      .map(function(x){
+        return String(x || '').trim();
+      })
+      .filter(Boolean);
+
+    if(!chunks.length) return s;
+
+    /*
+     * 普通模式：
+     * 保留前两块 + 最后两块。
+     */
+    if(chunks.length > 4){
+      chunks =
+        chunks.slice(0, 2)
+        .concat(chunks.slice(-2));
+    }
+
+    var out = chunks.join('\n\n═════\n\n');
+
+    if(aggressive && out.length > 30000){
+      out =
+        out.slice(0, 9000) +
+        '\n\n【世界书中段已省略，当前仅保留首尾相关设定】\n\n' +
+        out.slice(-20000);
+    }
+
+    return (
+      head +
+      WB_MARK +
+      '\n' +
+      out
+    );
+  }
+
+  /*
+   * 3. 压缩超长记忆召回
+   *
+   * 注意：
+   * 只压请求里的文本。
+   * state.memoryEntries 不动。
+   */
+  function compactRecall(text, aggressive){
+    var s = String(text || '');
+    var a = s.indexOf(RECALL_MARK);
+
+    if(a < 0) return s;
+
+    var b = s.indexOf(RECENT_MARK, a);
+
+    if(b < 0){
+      b = s.length;
+    }
+
+    var prefix = s.slice(0, a);
+    var recall = s.slice(a, b);
+    var suffix = s.slice(b);
+
+    var maxLen = aggressive ? 7000 : 14000;
+
+    if(recall.length > maxLen){
+
+      var first = aggressive ? 2500 : 5000;
+      var last = aggressive ? 4000 : 8500;
+
+      recall =
+        recall.slice(0, first) +
+        '\n\n【中间历史记忆已压缩，详细记忆仍保存在游戏本地记忆库】\n\n' +
+        recall.slice(-last);
+    }
+
+    return prefix + recall + suffix;
+  }
+
+  /*
+   * 4. 对每条消息做发送前处理
+   */
+  function compactMessages(body, aggressive){
+    var safe = cloneBody(body);
+
+    try{
+
+      if(!safe || !Array.isArray(safe.messages)){
+        return safe;
+      }
+
+      safe.messages.forEach(function(m){
+
+        if(!m || typeof m.content !== 'string'){
+          return;
+        }
+
+        /*
+         * system：
+         * 去除底层完整 WB 重复内容
+         */
+        if(m.role === 'system'){
+
+          m.content =
+            dedupFullWorldbook(m.content);
+
+          m.content =
+            compactInjectedWorldbook(
+              m.content,
+              aggressive
+            );
+        }
+
+        /*
+         * user：
+         * 压缩超长记忆召回
+         */
+        if(m.role === 'user'){
+
+          m.content =
+            compactRecall(
+              m.content,
+              aggressive
+            );
+        }
+
+      });
+
+    }catch(e){
+      return safe;
+    }
+
+    return safe;
+  }
+
+  function isLoadFailure(err){
+
+    var s = '';
+
+    try{
+      s = String(
+        err &&
+        err.message ||
+        err ||
+        ''
+      );
+    }catch(e){}
+
+    return /load failed|failed to fetch|networkerror|network error|fetch failed|connection was lost/i.test(s);
+  }
+
+  if(
+    typeof window.unifiedRequest === 'function' &&
+    !window.unifiedRequest.__v615Dedup
+  ){
+
+    var oldUnifiedV615 =
+      window.unifiedRequest;
+
+    window.unifiedRequest =
+      async function(url, key, body, timeout){
+
+        var original = body;
+        var size = bodyChars(body);
+
+        /*
+         * 第一次：
+         * 只有请求已经比较大时才做去重。
+         */
+        var firstBody = original;
+
+        try{
+
+          if(
+            size > SOFT_LIMIT &&
+            body &&
+            Array.isArray(body.messages)
+          ){
+
+            firstBody =
+              compactMessages(
+                body,
+                false
+              );
+          }
+
+        }catch(e){
+          firstBody = original;
+        }
+
+        /*
+         * 正常请求
+         */
+        try{
+
+          return await oldUnifiedV615.call(
+            this,
+            url,
+            key,
+            firstBody,
+            timeout
+          );
+
+        }catch(e1){
+
+          /*
+           * 只对真正的 Load failed 类错误
+           * 再做一次强制缩减。
+           */
+          if(!isLoadFailure(e1)){
+            throw e1;
+          }
+
+          try{
+
+            if(
+              original &&
+              Array.isArray(original.messages)
+            ){
+
+              var hardBody =
+                compactMessages(
+                  original,
+                  true
+                );
+
+              var hardSize =
+                bodyChars(hardBody);
+
+              console.warn(
+                '[V61.5] Load failed，执行深度请求压缩：',
+                size,
+                '→',
+                hardSize,
+                'chars'
+              );
+
+              return await oldUnifiedV615.call(
+                this,
+                url,
+                key,
+                hardBody,
+                timeout
+              );
+            }
+
+          }catch(e2){
+            throw e2;
+          }
+
+          throw e1;
+        }
+      };
+
+    window.unifiedRequest.__v615Dedup = true;
+  }
+
+  window.v615Check = function(){
+
+    try{
+
+      console.log(
+        '%c[V61.5] API请求去重检查',
+        'color:#b45309;font-weight:700'
+      );
+
+      console.log(
+        'unifiedRequest：',
+        window.unifiedRequest &&
+        window.unifiedRequest.__v615Dedup
+          ? 'V61.5 已挂载'
+          : '未挂载'
+      );
+
+      console.log(
+        'GM_SYSTEM 当前完整长度：',
+        typeof GM_SYSTEM === 'string'
+          ? GM_SYSTEM.length
+          : '未知'
+      );
+
+      console.log(
+        '当前内存条目：',
+        Array.isArray(state.memoryEntries)
+          ? state.memoryEntries.length
+          : 0
+      );
+
+      console.log(
+        '当前背包：',
+        state.bag
+      );
+
+      console.log(
+        '当前配方：',
+        state.recipes
+      );
+
+    }catch(e){
+      console.warn('[V61.5] 检查失败', e);
+    }
+
+  };
+
+  console.log(
+    '%c[V61.5] 世界书重复内容 + 超长记忆请求去重层已挂载',
+    'color:#b45309;font-weight:700'
+  );
+
+})();
+/* ▲▲▲ V61.5 结束 ▲▲▲ */
 </script>
 </body>
 </html>
