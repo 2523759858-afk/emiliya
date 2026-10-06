@@ -16707,6 +16707,341 @@ console.log(
 
 })();
  /* ▲▲▲ V61.3 结束 ▲▲▲ */
+/* ▼▼▼ V61.4 · 世界书/配方请求体与 iOS Load failed 安全层 ▼▼▼ */
+(function(){
+  'use strict';
+
+  if(window.__V61_4_REQUEST_SAFE__) return;
+  window.__V61_4_REQUEST_SAFE__ = true;
+
+  var WB_MARK = '【玩家录入的完整世界书·按需注入】';
+
+  // 普通压缩阈值
+  var SOFT_LIMIT = 78000;
+
+  // 更激进的保留范围
+  var HARD_LIMIT = 58000;
+
+  function textSize(v){
+    try{
+      if(v === undefined || v === null) return 0;
+      if(typeof v === 'string') return v.length;
+      return JSON.stringify(v).length;
+    }catch(e){
+      return 999999999;
+    }
+  }
+
+  function cloneBody(body){
+    try{
+      return JSON.parse(JSON.stringify(body));
+    }catch(e){
+      return body;
+    }
+  }
+
+  function normalizeChunk(s){
+    return String(s || '')
+      .replace(/[ \t]+/g, ' ')
+      .replace(/\n[ \t]+\n/g, '\n\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+  }
+
+  function compactWorldbook(text, aggressive){
+    var src = String(text || '');
+    var p = src.indexOf(WB_MARK);
+
+    // 没有世界书注入标记，完全不碰
+    if(p < 0) return src;
+
+    var before = src.slice(0, p).trimEnd();
+    var block = src.slice(p + WB_MARK.length).trim();
+
+    var chunks = block
+      .split(/\n*═════\n*/)
+      .map(normalizeChunk)
+      .filter(function(x){
+        return !!x;
+      });
+
+    /*
+     * V13 的世界书结构本来就是：
+     * 默认章节 + 当前行动命中的相关章节
+     *
+     * 请求过大时：
+     * 保留前两块 + 最后两块。
+     *
+     * 这样像“配方/材料”这种请求时，
+     * 当前命中的相关章节通常仍会被保留。
+     */
+    if(chunks.length > 4){
+      chunks = chunks.slice(0, 2).concat(chunks.slice(-2));
+    }
+
+    var kept = chunks.join('\n\n═════\n\n');
+
+    /*
+     * 进一步压缩中间部分，
+     * 不动 state，只动发送给 API 的文本。
+     */
+    if(aggressive && kept.length > HARD_LIMIT){
+
+      var head = kept.slice(0, 12000);
+      var tail = kept.slice(-43000);
+
+      kept =
+        head +
+        '\n\n【世界书中段已压缩，仅保留与当前请求最相关的前后文】\n\n' +
+        tail;
+
+    }else if(kept.length > 62000){
+
+      var head2 = kept.slice(0, 14000);
+      var tail2 = kept.slice(-44000);
+
+      kept =
+        head2 +
+        '\n\n【世界书中段已压缩】\n\n' +
+        tail2;
+    }
+
+    return before +
+      '\n\n' +
+      WB_MARK +
+      '\n' +
+      kept;
+  }
+
+  function compactMessages(body, aggressive){
+    var safe = cloneBody(body);
+
+    try{
+
+      if(!safe || !Array.isArray(safe.messages)){
+        return safe;
+      }
+
+      safe.messages.forEach(function(m){
+
+        if(!m || typeof m.content !== 'string'){
+          return;
+        }
+
+        if(m.content.indexOf(WB_MARK) >= 0){
+
+          m.content = compactWorldbook(
+            m.content,
+            aggressive
+          );
+
+        }
+
+      });
+
+    }catch(e){
+
+      return safe;
+
+    }
+
+    return safe;
+  }
+
+  function totalBodyText(body){
+
+    try{
+
+      if(body && Array.isArray(body.messages)){
+
+        var n = 0;
+
+        body.messages.forEach(function(m){
+
+          n += String(
+            m && m.content || ''
+          ).length;
+
+        });
+
+        return n;
+      }
+
+    }catch(e){}
+
+    return textSize(body);
+  }
+
+  function isLoadFailure(err){
+
+    var s = String(
+      err && err.message ||
+      err ||
+      ''
+    );
+
+    return /load failed|failed to fetch|networkerror|network error|the network connection was lost|fetch failed/i.test(s);
+  }
+
+  /*
+   * 包住当前 unifiedRequest。
+   *
+   * 注意：
+   * V61.2 如果已经包过 unifiedRequest，
+   * V61.4 会在它外层继续工作。
+   */
+  if(
+    typeof window.unifiedRequest === 'function' &&
+    !window.unifiedRequest.__v614RequestSafe
+  ){
+
+    var oldUnifiedV614 =
+      window.unifiedRequest;
+
+    window.unifiedRequest =
+      async function(url, key, body, timeout){
+
+        var safeBody = body;
+        var size = totalBodyText(body);
+
+        /*
+         * 第一次：
+         * 请求超过阈值才压缩。
+         */
+        try{
+
+          if(
+            size > SOFT_LIMIT &&
+            body &&
+            Array.isArray(body.messages)
+          ){
+
+            safeBody =
+              compactMessages(
+                body,
+                false
+              );
+
+          }
+
+        }catch(e){
+
+          safeBody = body;
+
+        }
+
+        /*
+         * 正常发送
+         */
+        try{
+
+          return await oldUnifiedV614.call(
+            this,
+            url,
+            key,
+            safeBody,
+            timeout
+          );
+
+        }catch(e1){
+
+          /*
+           * 只有真正的网络 Load failed
+           * 才触发第二次更强压缩。
+           */
+          if(!isLoadFailure(e1)){
+            throw e1;
+          }
+
+          try{
+
+            if(
+              body &&
+              Array.isArray(body.messages)
+            ){
+
+              var currentSize =
+                totalBodyText(safeBody);
+
+              if(
+                size > SOFT_LIMIT ||
+                currentSize > SOFT_LIMIT
+              ){
+
+                var hardBody =
+                  compactMessages(
+                    body,
+                    true
+                  );
+
+                return await oldUnifiedV614.call(
+                  this,
+                  url,
+                  key,
+                  hardBody,
+                  timeout
+                );
+              }
+
+            }
+
+          }catch(e2){
+
+            throw e2;
+
+          }
+
+          throw e1;
+        }
+
+      };
+
+    window.unifiedRequest.__v614RequestSafe = true;
+  }
+
+  /*
+   * 诊断命令：
+   * 控制台输入 v614RequestCheck()
+   */
+  window.v614RequestCheck = function(){
+
+    try{
+
+      console.log(
+        '%c[V61.4] 请求体安全检查',
+        'color:#0f766e;font-weight:700'
+      );
+
+      console.log(
+        'SOFT_LIMIT =',
+        SOFT_LIMIT,
+        'HARD_LIMIT =',
+        HARD_LIMIT
+      );
+
+      console.log(
+        '当前 unifiedRequest =',
+        window.unifiedRequest &&
+        window.unifiedRequest.__v614RequestSafe
+          ? 'V61.4 已挂载'
+          : '未挂载'
+      );
+
+      console.log(
+        '说明：只压缩发送给 API 的世界书请求体，不修改 state、背包、配方、存档。'
+      );
+
+    }catch(e){}
+
+  };
+
+  console.log(
+    '%c[V61.4] 世界书/请求体 Load failed 安全层已挂载',
+    'color:#0f766e;font-weight:700'
+  );
+
+})();
+/* ▲▲▲ V61.4 结束 ▲▲▲ */
 </script>
 </body>
 </html>
