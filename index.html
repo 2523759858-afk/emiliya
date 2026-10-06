@@ -15881,6 +15881,154 @@ console.log(
 
 })();
 /* ▲▲▲ V62 NPC档案自动完善与正文联动层 ▲▲▲ */
+/* ▼▼▼ V61.2 · 魔药/配方获取与请求体安全修复 ▼▼▼ */
+(function(){
+  'use strict';
+
+  if(window.__V61_2_RECIPE_SAFE__) return;
+  window.__V61_2_RECIPE_SAFE__ = true;
+
+  var RECIPE_RULE =
+    '\n\n【魔药与配方获取修正规则】\n' +
+    '1. “禁止突然出现魔药配方”只表示禁止毫无因果地凭空赠送配方。\n' +
+    '2. 如果剧情已经通过教会、势力、NPC赠予、交易、古籍、调查、冒险奖励、战利品、隐秘组织、合理任务报酬、玩家自身研究等方式取得配方，则必须允许玩家获得。\n' +
+    '3. 一旦正文明确写出玩家已经正式获得配方，必须同步返回 stateChanges.addRecipe，不得正文写“获得”而结构化状态却不给配方。\n' +
+    '4. addRecipe 必须包含 name、seq、main、aux、desc；不得只写名称。\n' +
+    '5. 如果剧情获得的是已经炼制完成的魔药，则必须同步放入 stateChanges.addBag，不要误写成 addRecipe。\n' +
+    '6. 配方获取必须符合当前身份、地点、NPC、势力、资源和因果，但不能因为“世界书禁止突然出现”而否定已经成立的剧情因果。\n';
+
+  function isRecipeRelated(text){
+    return /魔药|配方|晋升|炼制|药剂|扮演|失控|服食魔药/.test(String(text || ''));
+  }
+
+  function totalMessageSize(messages){
+    var n = 0;
+    (messages || []).forEach(function(m){
+      n += String(m && m.content || '').length;
+    });
+    return n;
+  }
+
+  /*
+   * 最外层拦截 unifiedRequest。
+   * 不碰 execute / applyAI / renderUI。
+   */
+  if(typeof window.unifiedRequest === 'function' &&
+     !window.unifiedRequest.__v612RecipeSafe){
+
+    var oldUnifiedRequestV612 = window.unifiedRequest;
+
+    window.unifiedRequest = async function(url,key,body,timeout){
+
+      try{
+
+        if(body && Array.isArray(body.messages)){
+
+          var msgs = body.messages;
+          var allText = msgs.map(function(m){
+            return String(m && m.content || '');
+          }).join('\n');
+
+          var recipeRelated = isRecipeRelated(allText);
+
+          /*
+           * 给模型明确解释“禁止突然出现”与“合法获取”的区别。
+           */
+          if(recipeRelated){
+
+            var systemIndex = -1;
+
+            for(var i=0;i<msgs.length;i++){
+
+              if(msgs[i] && msgs[i].role === 'system'){
+                systemIndex = i;
+                break;
+              }
+
+            }
+
+            if(systemIndex >= 0){
+
+              msgs[systemIndex].content =
+                String(msgs[systemIndex].content || '') +
+                RECIPE_RULE;
+
+            }
+
+          }
+
+          /*
+           * 世界书已经在 GM_SYSTEM 中存在，
+           * 旧世界书注入层又可能重复塞进大量章节。
+           *
+           * 超过这个体积时，仅删除“重复世界书注入块”，
+           * 不删除 GM_SYSTEM 本身。
+           */
+          var size = totalMessageSize(msgs);
+
+          if(size > 95000){
+
+            msgs.forEach(function(m){
+
+              if(!m || typeof m.content !== 'string') return;
+
+              /*
+               * 世界书注入补丁使用的明确标记。
+               */
+              m.content = m.content.replace(
+                /\n*【玩家录入的完整世界书·按需注入】[\s\S]*?(?=\n*【|$)/g,
+                '\n【世界书重复注入已压缩】'
+              );
+
+            });
+
+          }
+
+          /*
+           * 再检查一次。
+           * 如果仍然异常巨大，只压缩明显重复的世界书分隔块。
+           */
+          var size2 = totalMessageSize(msgs);
+
+          if(size2 > 120000){
+
+            msgs.forEach(function(m){
+
+              if(!m || typeof m.content !== 'string') return;
+
+              m.content = m.content
+                .replace(/\n+═════\n+/g, '\n')
+                .replace(/【世界书重复注入已压缩】/g, '');
+
+            });
+
+          }
+
+        }
+
+      }catch(e){
+
+        /*
+         * 本补丁绝不能因为自身异常阻塞原 API。
+         */
+        console.warn('[V61.2] recipe safe layer:',e);
+
+      }
+
+      return oldUnifiedRequestV612.apply(this,arguments);
+    };
+
+    window.unifiedRequest.__v612RecipeSafe = true;
+
+  }
+
+  console.log(
+    '%c[V61.2] 魔药/配方获取与请求体安全层已挂载',
+    'color:#7c3aed;font-weight:700'
+  );
+
+})();
+ /* ▲▲▲ V61.2 结束 ▲▲▲ */
 </script>
 </body>
 </html>
