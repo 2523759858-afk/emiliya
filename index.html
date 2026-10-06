@@ -17436,6 +17436,1987 @@ console.log(
 
 })();
 /* ▲▲▲ V61.5 结束 ▲▲▲ */
+/* ▼▼▼ V62.1 · 玩家核心状态/居所/NPC物品/本轮战斗显示层 ▼▼▼ */
+(function(){
+  'use strict';
+
+  if(window.__V62_1_CORE_STATE__) return;
+  window.__V62_1_CORE_STATE__ = true;
+
+  function clone(v){
+    try{return JSON.parse(JSON.stringify(v));}catch(e){return v;}
+  }
+
+  function num(v,d){
+    var n=Number(v);
+    return isFinite(n)?n:d;
+  }
+
+  function clamp(v,min,max){
+    return Math.max(min,Math.min(max,v));
+  }
+
+  function text(v){
+    return v===undefined||v===null?'':String(v).trim();
+  }
+
+  /* =========================================================
+     1. 途径统一
+     所有途径最终只保存正式“途径名”
+     ========================================================= */
+
+  var PATH_ALIASES = {
+    '愚者':'占卜家','愚者途径':'占卜家','占卜家途径':'占卜家',
+    '门':'学徒','门途径':'学徒','学徒途径':'学徒',
+    '错误':'偷盗者','错误途径':'偷盗者','偷盗者途径':'偷盗者',
+    '空想家':'观众','空想家途径':'观众','观众途径':'观众',
+    '太阳':'歌颂者','太阳途径':'歌颂者','歌颂者途径':'歌颂者',
+    '暴君':'水手','暴君途径':'水手','水手途径':'水手',
+    '白塔':'阅读者','白塔途径':'阅读者','阅读者途径':'阅读者',
+    '倒吊人':'秘祈人','倒吊人途径':'秘祈人','秘祈人途径':'秘祈人',
+    '黑暗':'不眠者','黑暗途径':'不眠者','不眠者途径':'不眠者',
+    '死神':'收尸人','死神途径':'收尸人','收尸人途径':'收尸人',
+    '黄昏巨人':'战士','黄昏巨人途径':'战士','战士途径':'战士',
+    '魔女':'刺客','魔女途径':'刺客','刺客途径':'刺客',
+    '红祭司':'猎人','红祭司途径':'猎人','猎人途径':'猎人',
+    '隐者':'窥秘人','隐者途径':'窥秘人','窥秘人途径':'窥秘人',
+    '完美者':'通识者','完美者途径':'通识者','通识者途径':'通识者',
+    '命运之轮':'怪物','命运之轮途径':'怪物','怪物途径':'怪物',
+    '母亲':'耕种者','母亲途径':'耕种者','耕种者途径':'耕种者',
+    '月亮':'药师','月亮途径':'药师','药师途径':'药师',
+    '深渊':'罪犯','深渊途径':'罪犯','罪犯途径':'罪犯',
+    '被缚者':'囚犯','被缚者途径':'囚犯','囚犯途径':'囚犯',
+    '黑皇帝':'律师','黑皇帝途径':'律师','律师途径':'律师',
+    '审判者':'仲裁人','审判者途径':'仲裁人','仲裁人途径':'仲裁人',
+
+    /* 刺客途径常见序列称谓 */
+    '女巫':'刺客',
+    '欢愉':'刺客',
+    '欢愉魔女':'刺客',
+    '痛苦':'刺客',
+    '痛苦魔女':'刺客',
+    '绝望':'刺客',
+    '绝望魔女':'刺客',
+    '不老魔女':'刺客',
+    '灾难魔女':'刺客',
+    '末日':'刺客',
+    '教唆者':'刺客',
+    '教唆家':'刺客',
+
+    /* 占卜家 */
+    '诡法师':'占卜家',
+    '秘偶大师':'占卜家',
+    '无面人':'占卜家',
+    '魔术师':'占卜家',
+    '小丑':'占卜家',
+
+    /* 学徒 */
+    '旅行家':'学徒',
+    '漫游者':'学徒',
+    '旅法师':'学徒',
+    '戏法大师':'学徒',
+    '记录官':'学徒',
+
+    /* 偷盗者 */
+    '时之虫':'偷盗者',
+    '命运木马':'偷盗者',
+    '导师':'偷盗者',
+    '寄生者':'偷盗者',
+    '窃梦家':'偷盗者',
+
+    /* 观众 */
+    '操纵者':'观众',
+    '织梦者':'观众',
+    '洞察者':'观众',
+    '作家':'观众',
+    '读心者':'观众',
+    '催眠师':'观众',
+
+    /* 歌颂者 */
+    '纯白天使':'歌颂者',
+    '光明使者':'歌颂者',
+    '无暗者':'歌颂者',
+    '光祭司':'歌颂者',
+
+    /* 水手 */
+    '海王':'水手',
+    '灾难主教':'水手',
+    '海洋歌者':'水手',
+    '风眷者':'水手',
+    '航海家':'水手',
+    '暴怒者':'水手',
+
+    /* 阅读者 */
+    '全知之眼':'阅读者',
+    '智天使':'阅读者',
+    '炼金术士':'阅读者',
+    '预言家':'阅读者',
+    '博学者':'阅读者',
+    '守知者':'阅读者',
+
+    /* 秘祈人 */
+    '暗天使':'秘祈人',
+    '牧羊人':'秘祈人',
+    '蔷薇主教':'秘祈人',
+    '黑骑士':'秘祈人',
+    '倾听者':'秘祈人',
+
+    /* 不眠者 */
+    '午夜诗人':'不眠者',
+    '梦魇':'不眠者',
+    '守夜人':'不眠者',
+    '恐惧骑士':'不眠者',
+    '厄难骑士':'不眠者',
+
+    /* 收尸人 */
+    '通灵者':'收尸人',
+    '死灵导师':'收尸人',
+    '看门人':'收尸人',
+    '不死者':'收尸人',
+    '掘墓人':'收尸人',
+
+    /* 战士 */
+    '荣耀者':'战士',
+    '银骑士':'战士',
+    '猎魔者':'战士',
+    '守护者':'战士',
+    '黎明骑士':'战士',
+    '武器大师':'战士',
+
+    /* 猎人 */
+    '战争主教':'猎人',
+    '铁血骑士':'猎人',
+    '纵火者':'猎人',
+    '纵火家':'猎人',
+    '挑衅者':'猎人',
+
+    /* 窥秘人 */
+    '神秘学家':'窥秘人',
+    '星象师':'窥秘人',
+    '贤者':'窥秘人',
+    '巫师':'窥秘人',
+    '格斗学者':'窥秘人',
+
+    /* 通识者 */
+    '神匠':'通识者',
+    '创造者':'通识者',
+    '工匠':'通识者',
+    '机械学者':'通识者',
+
+    /* 怪物 */
+    '水银之蛇':'怪物',
+    '混沌先知':'怪物',
+    '幸运儿':'怪物',
+    '赢家':'怪物',
+    '厄运法师':'怪物',
+
+    /* 耕种者 */
+    '大地母神':'耕种者',
+    '生命使者':'耕种者',
+    '繁衍主教':'耕种者',
+    '丰收祭司':'耕种者',
+    '德鲁伊':'耕种者',
+
+    /* 药师 */
+    '美神':'药师',
+    '月亮天使':'药师',
+    '掌月使':'药师',
+    '猩红学者':'药师',
+    '巫医':'药师',
+    '驯兽师':'药师',
+
+    /* 罪犯 */
+    '恶魔':'罪犯',
+    '欲望使徒':'罪犯',
+    '连环杀手':'罪犯',
+    '魔鬼':'罪犯',
+    '恶魔猎人':'罪犯',
+
+    /* 囚犯 */
+    '神孽':'囚犯',
+    '古代邪物':'囚犯',
+    '沉默门徒':'囚犯',
+    '木偶':'囚犯',
+    '怨魂':'囚犯',
+    '活尸':'囚犯',
+    '狼人':'囚犯',
+    '疯子':'囚犯',
+
+    /* 律师 */
+    '弑序亲王':'律师',
+    '熵之公爵':'律师',
+    '狂乱法师':'律师',
+    '堕落伯爵':'律师',
+    '混乱导师':'律师',
+    '腐化男爵':'律师',
+    '贿赂者':'律师',
+    '野蛮人':'律师',
+
+    /* 仲裁人 */
+    '秩序之手':'仲裁人',
+    '平衡者':'仲裁人',
+    '混乱猎手':'仲裁人',
+    '律令法师':'仲裁人',
+    '惩戒骑士':'仲裁人',
+    '法官':'仲裁人',
+    '审讯者':'仲裁人',
+    '治安官':'仲裁人'
+  };
+
+  var CANON_PATHS = [
+    '占卜家','学徒','偷盗者','观众','歌颂者','水手',
+    '阅读者','秘祈人','不眠者','收尸人','战士','刺客',
+    '猎人','窥秘人','通识者','怪物','耕种者','药师',
+    '罪犯','囚犯','律师','仲裁人'
+  ];
+
+  function canonicalPath(v){
+    var s=text(v);
+
+    if(!s) return '';
+
+    if(/^(普通人|凡人|凡俗|未知|未选择|待定)$/i.test(s)){
+      return s;
+    }
+
+    if(PATH_ALIASES[s]){
+      return PATH_ALIASES[s];
+    }
+
+    var stripped=s
+      .replace(/[“”"'「」『』]/g,'')
+      .trim();
+
+    if(PATH_ALIASES[stripped]){
+      return PATH_ALIASES[stripped];
+    }
+
+    for(var i=0;i<CANON_PATHS.length;i++){
+      var p=CANON_PATHS[i];
+
+      if(
+        stripped===p ||
+        stripped.indexOf(p+'途径')===0 ||
+        stripped.indexOf(p)>=0
+      ){
+        return p;
+      }
+    }
+
+    var keys=Object.keys(PATH_ALIASES);
+
+    for(var j=0;j<keys.length;j++){
+      if(stripped.indexOf(keys[j])>=0){
+        return PATH_ALIASES[keys[j]];
+      }
+    }
+
+    return s;
+  }
+
+  /* =========================================================
+     2. 扮演法 / 人性之锚真实状态
+     ========================================================= */
+
+  function ensureCoreState(){
+
+    if(!state._v621Acting){
+
+      state._v621Acting={
+        unlocked:false,
+        role:'',
+        principle:'',
+        progress:0,
+        risk:0,
+        lastAct:'',
+        note:''
+      };
+
+    }
+
+    if(!state._v621Anchor){
+
+      state._v621Anchor={
+        enabled:false,
+        strength:0,
+        maxStrength:100,
+        summary:'',
+        broken:false,
+        anchors:[],
+        change:'',
+        note:''
+      };
+
+    }
+
+    return state._v621Acting;
+  }
+
+  function seqNum(s){
+
+    var t=text(s);
+
+    var m=t.match(/序列\s*([0-9])/);
+
+    if(m){
+      return parseInt(m[1],10);
+    }
+
+    if(/天使之王/.test(t)) return 1;
+    if(/真神/.test(t)) return 0;
+
+    return 99;
+  }
+
+  function applyActingUpdate(u){
+
+    if(!u || typeof u!=='object') return;
+
+    ensureCoreState();
+
+    var a=state._v621Acting;
+
+    if(u.unlocked!==undefined){
+      a.unlocked=!!u.unlocked;
+    }
+
+    if(u.role!==undefined){
+      a.role=text(u.role);
+    }
+
+    if(u.principle!==undefined){
+      a.principle=text(u.principle);
+    }
+
+    if(u.progress!==undefined){
+      a.progress=clamp(
+        num(u.progress,a.progress),
+        0,
+        100
+      );
+    }
+
+    if(u.risk!==undefined){
+      a.risk=clamp(
+        num(u.risk,a.risk),
+        0,
+        100
+      );
+    }
+
+    if(u.lastAct!==undefined){
+      a.lastAct=text(u.lastAct);
+    }
+
+    if(u.note!==undefined){
+      a.note=text(u.note);
+    }
+
+    if(u.digestDelta!==undefined){
+
+      state.digest=clamp(
+        num(state.digest,0)+num(u.digestDelta,0),
+        0,
+        100
+      );
+
+    }
+
+    if(
+      !a.unlocked &&
+      state.path &&
+      canonicalPath(state.path)!=='普通人' &&
+      !/^(普通人|凡人|凡俗)$/.test(String(state.path))
+    ){
+
+      a.unlocked=true;
+
+    }
+
+  }
+
+  function applyAnchorUpdate(u){
+
+    if(!u || typeof u!=='object') return;
+
+    ensureCoreState();
+
+    var a=state._v621Anchor;
+
+    if(u.enabled!==undefined){
+      a.enabled=!!u.enabled;
+    }
+
+    if(u.strength!==undefined){
+
+      a.strength=clamp(
+        num(u.strength,a.strength),
+        0,
+        100
+      );
+
+    }
+
+    if(u.maxStrength!==undefined){
+
+      a.maxStrength=Math.max(
+        1,
+        num(u.maxStrength,a.maxStrength)
+      );
+
+    }
+
+    if(u.summary!==undefined){
+      a.summary=text(u.summary);
+    }
+
+    if(u.broken!==undefined){
+      a.broken=!!u.broken;
+    }
+
+    if(u.change!==undefined){
+      a.change=text(u.change);
+    }
+
+    if(u.note!==undefined){
+      a.note=text(u.note);
+    }
+
+    if(Array.isArray(u.anchors)){
+      a.anchors=clone(u.anchors);
+    }
+
+    if(Array.isArray(u.add)){
+
+      if(!Array.isArray(a.anchors)){
+        a.anchors=[];
+      }
+
+      u.add.forEach(function(x){
+
+        if(x){
+          a.anchors.push(clone(x));
+        }
+
+      });
+
+    }
+
+    if(Array.isArray(u.remove) && Array.isArray(a.anchors)){
+
+      u.remove.forEach(function(name){
+
+        var s=text(name);
+
+        a.anchors=a.anchors.filter(function(x){
+
+          return text(x && x.name)!==s;
+
+        });
+
+      });
+
+    }
+
+    if(a.strength>100){
+      a.strength=100;
+    }
+
+    if(u.sanityDelta!==undefined){
+
+      state.sanity=clamp(
+        num(state.sanity,100)+num(u.sanityDelta,0),
+        0,
+        state.maxSanity||100
+      );
+
+    }
+
+  }
+
+  function renderCoreState(){
+
+    try{
+
+      ensureCoreState();
+
+      var panel=document.getElementById('panel-path');
+
+      if(!panel) return;
+
+      var rows=panel.querySelectorAll('.row');
+
+      if(rows.length>=4){
+
+        var a=state._v621Acting;
+        var an=state._v621Anchor;
+        var path=canonicalPath(state.path||'普通人');
+        var sn=seqNum(state.seq);
+
+        var actingText=
+          (
+            path==='普通人' ||
+            path==='普通人途径' ||
+            path==='凡俗' ||
+            path==='凡人'
+          )
+          ?
+          '未觉醒'
+          :
+          (
+            a.unlocked
+            ?
+            '已启用 · '+
+            (a.role||path)+
+            ' · '+
+            a.progress+
+            '%'
+            :
+            '待确认'
+          );
+
+        var anchorText;
+
+        if(sn>4){
+
+          anchorText='未到高位门槛';
+
+        }else if(an.broken){
+
+          anchorText='⚠️ 锚点受损 · '+Math.round(an.strength)+'%';
+
+        }else if(an.enabled){
+
+          anchorText=
+            '稳定度 '+
+            Math.round(an.strength)+
+            '%'+
+            (
+              an.summary
+              ?
+              ' · '+an.summary
+              :
+              ''
+            );
+
+        }else{
+
+          anchorText='尚未建立';
+
+        }
+
+        rows[2].children[1].textContent=actingText;
+        rows[3].children[1].textContent=anchorText;
+
+        rows[2].children[1].className=
+          'v'+
+          (
+            a.risk>=70
+            ?
+            ' bad'
+            :
+            a.risk>=40
+            ?
+            ' warn'
+            :
+            ''
+          );
+
+        rows[3].children[1].className=
+          'v'+
+          (
+            an.broken
+            ?
+            ' bad'
+            :
+            ''
+          );
+
+      }
+
+    }catch(e){
+
+      console.warn(
+        '[V62.1] renderCoreState',
+        e
+      );
+
+    }
+
+  }
+
+  /* =========================================================
+     3. 安全据点 / 居所
+     ========================================================= */
+
+  function houseKey(h){
+
+    return text(
+      h &&
+      h.name
+    ).toLowerCase();
+
+  }
+
+  function normalizeHouse(h){
+
+    if(!h || typeof h!=='object'){
+      return null;
+    }
+
+    var o=clone(h)||{};
+
+    o.name=text(
+      o.name ||
+      o.title ||
+      o.residence
+    );
+
+    if(!o.name){
+      return null;
+    }
+
+    o.type=text(
+      o.type ||
+      '住所'
+    );
+
+    o.location=text(
+      o.location ||
+      state.location ||
+      o.name
+    );
+
+    o.owned=
+      o.owned!==undefined
+      ?
+      !!o.owned
+      :
+      true;
+
+    o.security=text(
+      o.security ||
+      '普通'
+    );
+
+    o.desc=text(
+      o.desc ||
+      o.description ||
+      ''
+    );
+
+    o.active=
+      o.active!==undefined
+      ?
+      !!o.active
+      :
+      false;
+
+    return o;
+  }
+
+  function upsertHouse(h){
+
+    var x=normalizeHouse(h);
+
+    if(!x) return;
+
+    if(!Array.isArray(state.houses)){
+      state.houses=[];
+    }
+
+    var k=houseKey(x);
+    var idx=-1;
+
+    for(
+      var i=0;
+      i<state.houses.length;
+      i++
+    ){
+
+      if(
+        houseKey(state.houses[i])===k
+      ){
+
+        idx=i;
+        break;
+
+      }
+
+    }
+
+    if(idx<0){
+
+      state.houses.push(x);
+
+    }else{
+
+      state.houses[idx]=Object.assign(
+        {},
+        state.houses[idx],
+        x
+      );
+
+    }
+
+  }
+
+  function removeHouse(name){
+
+    var k=text(name).toLowerCase();
+
+    if(!Array.isArray(state.houses)){
+      return;
+    }
+
+    state.houses=
+      state.houses.filter(function(h){
+
+        return houseKey(h)!==k;
+
+      });
+
+  }
+
+  function isRealResidence(v){
+
+    var s=text(v);
+
+    if(!s) return false;
+
+    return !/^(待定|未知|无|无固定居所|临时借宿|未知地点|未确定)$/i.test(s)
+      &&
+      s.length>=2;
+  }
+
+  function syncResidenceToHouse(prevResidence){
+
+    if(!isRealResidence(state.residence)){
+      return;
+    }
+
+    var cur=text(state.residence);
+    var prev=text(prevResidence);
+
+    if(
+      cur===prev &&
+      Array.isArray(state.houses) &&
+      state.houses.length
+    ){
+
+      return;
+
+    }
+
+    upsertHouse({
+
+      name:cur,
+
+      type:
+        /旅馆|旅店|客栈/.test(cur)
+        ?
+        '临时住所'
+        :
+        '居所',
+
+      location:
+        state.location||
+        cur,
+
+      owned:true,
+
+      security:'普通',
+
+      desc:
+        '由当前居所记录自动建立的安全据点。',
+
+      active:true
+
+    });
+
+  }
+
+  function applyHouseChanges(sc){
+
+    if(!sc || typeof sc!=='object'){
+      return;
+    }
+
+    if(Array.isArray(sc.addHouse)){
+
+      sc.addHouse.forEach(
+        upsertHouse
+      );
+
+    }else if(sc.addHouse){
+
+      upsertHouse(
+        sc.addHouse
+      );
+
+    }
+
+    if(Array.isArray(sc.updateHouse)){
+
+      sc.updateHouse.forEach(
+        upsertHouse
+      );
+
+    }else if(sc.updateHouse){
+
+      upsertHouse(
+        sc.updateHouse
+      );
+
+    }
+
+    if(Array.isArray(sc.removeHouse)){
+
+      sc.removeHouse.forEach(
+        removeHouse
+      );
+
+    }else if(sc.removeHouse){
+
+      removeHouse(
+        sc.removeHouse
+      );
+
+    }
+
+  }
+
+  /* =========================================================
+     4. NPC物品描述
+     ========================================================= */
+
+  function genericItemDesc(s){
+
+    s=text(s);
+
+    return !s ||
+      /干净的|
+        平平无奇|
+        普通的|
+        来历不明|
+        尚需确认|
+        普通器物|
+        凡俗器物|
+        日常用品|
+        普通生活用品|
+        未完全确认|
+        一件普通|
+        用途一目了然|
+        看起来还算实用|
+        具体来历不明/.test(
+          s.replace(/\s+/g,'')
+        );
+
+  }
+
+  function enrichNpcItem(it){
+
+    if(
+      !it ||
+      typeof it!=='object'
+    ){
+
+      return it;
+
+    }
+
+    if(!text(it.name)){
+      return it;
+    }
+
+    var goodDesc=
+      !genericItemDesc(it.desc)
+      ?
+      it.desc
+      :
+      (
+        !genericItemDesc(it.description)
+        ?
+        it.description
+        :
+        ''
+      );
+
+    if(goodDesc){
+
+      it.desc=goodDesc;
+      it.description=goodDesc;
+
+      return it;
+
+    }
+
+    var d='';
+
+    try{
+
+      if(
+        typeof genItemDesc_v11===
+        'function'
+      ){
+
+        d=genItemDesc_v11(
+          it.name
+        );
+
+      }
+
+    }catch(e){}
+
+    if(
+      !d &&
+      window.V61Item &&
+      typeof window.V61Item.describe===
+      'function'
+    ){
+
+      try{
+
+        var tmp={
+          name:it.name
+        };
+
+        d=
+          window.V61Item.describe(
+            tmp
+          );
+
+      }catch(e){}
+
+    }
+
+    if(
+      !d ||
+      genericItemDesc(d)
+    ){
+
+      d=
+        '“'+
+        it.name+
+        '”是一件被随身携带过的物件；从外观与使用痕迹可以判断它并非全新，具体材质、来历与实际用途仍需结合持有者的身份和经历判断。';
+
+    }
+
+    it.desc=d;
+    it.description=d;
+
+    return it;
+
+  }
+
+  function refreshNpcBags(){
+
+    Object.keys(
+      state.relations||
+      {}
+    ).forEach(function(n){
+
+      var r=
+        state.relations[n];
+
+      if(
+        r &&
+        Array.isArray(r.bag)
+      ){
+
+        r.bag.forEach(
+          enrichNpcItem
+        );
+
+      }
+
+    });
+
+  }
+
+  /* =========================================================
+     5. 本轮临时战斗 UI
+     ========================================================= */
+
+  function clearTurnBattlePanel(){
+
+    var x=
+      document.getElementById(
+        'v621TurnBattlePanel'
+      );
+
+    if(
+      x &&
+      x.parentNode
+    ){
+
+      x.parentNode.removeChild(x);
+
+    }
+
+    try{
+
+      [
+        'v60CombatPanel',
+        'battlePanel'
+      ].forEach(function(id){
+
+        var e=
+          document.getElementById(id);
+
+        if(e){
+          e.style.display='none';
+        }
+
+      });
+
+    }catch(e){}
+
+  }
+
+  function battleData(data){
+
+    if(!data){
+      return null;
+    }
+
+    var b=
+      data.battleUI||
+      data.battle||
+      data.combat;
+
+    if(
+      !b ||
+      typeof b!=='object'
+    ){
+
+      return null;
+
+    }
+
+    if(
+      b.active===false ||
+      b.isActive===false
+    ){
+
+      return null;
+
+    }
+
+    if(
+      !(
+        b.active===true ||
+        b.isActive===true ||
+        b.enemyName ||
+        b.enemyHp!==undefined
+      )
+    ){
+
+      return null;
+
+    }
+
+    return b;
+
+  }
+
+  function renderTurnBattle(data){
+
+    clearTurnBattlePanel();
+
+    var b=
+      battleData(data);
+
+    if(!b){
+      return;
+    }
+
+    var log=
+      document.getElementById(
+        'log'
+      );
+
+    if(!log){
+      return;
+    }
+
+    var p=
+      document.createElement('div');
+
+    p.id=
+      'v621TurnBattlePanel';
+
+    p.style.cssText=
+      'margin:10px 0;'+
+      'padding:11px 13px;'+
+      'border:1px solid #9b7b4b;'+
+      'border-radius:10px;'+
+      'background:linear-gradient(180deg,#fbf5e9,#f3ead8);'+
+      'box-shadow:0 5px 18px rgba(80,55,25,.08);'+
+      'font-size:11px;'+
+      'line-height:1.65;';
+
+    var round=
+      b.round||
+      b.turn||
+      1;
+
+    var enemy=
+      b.enemyName||
+      b.enemy||
+      '交战目标';
+
+    var hp=
+      b.enemyMaxHp!==undefined
+      ?
+      String(b.enemyHp||0)+
+      ' / '+
+      String(b.enemyMaxHp)
+      :
+      '未知';
+
+    var actions=
+      Array.isArray(b.actions)
+      ?
+      b.actions
+      :
+      [];
+
+    var html=
+      '<div style="font-weight:800;color:#6f4f2b;margin-bottom:5px">'+
+      '⚔ 本轮战斗态势 · 第 '+
+      round+
+      ' 回合</div>'+
+      '<div>敌方：<b>'+
+      enemy+
+      '</b></div>'+
+      '<div>敌方位格：'+
+      (b.enemySeq||'未知')+
+      ' · 途径：'+
+      (b.enemyPath||'未知')+
+      '</div>'+
+      '<div>敌方状态：'+
+      (b.enemyStatus||'未知')+
+      ' · HP：'+
+      hp+
+      '</div>'+
+      '<div>玩家：HP '+
+      (state.hp||0)+
+      '/'+
+      (state.maxHp||0)+
+      ' · 灵性 '+
+      (state.mp||0)+
+      '/'+
+      (state.maxMp||0)+
+      ' · 理智 '+
+      (state.sanity||0)+
+      '/'+
+      (state.maxSanity||0)+
+      '</div>';
+
+    if(b.lastOutcome){
+
+      html+=
+        '<div style="margin-top:5px;color:#6b7280">'+
+        '结果：'+
+        b.lastOutcome+
+        '</div>';
+
+    }
+
+    if(actions.length){
+
+      html+=
+        '<div style="margin-top:6px;color:#8a6a3a">'+
+        'AI给出的本轮可选思路：'+
+        actions.map(function(x){
+
+          return '【'+x+'】';
+
+        }).join(' ')+
+        '</div>';
+
+    }
+
+    p.innerHTML=
+      html;
+
+    log.appendChild(p);
+
+    log.scrollTop=
+      log.scrollHeight;
+
+  }
+
+  /* =========================================================
+     6. AI规则
+     ========================================================= */
+
+  function addRules(){
+
+    if(
+      typeof GM_SYSTEM!=='string'
+    ){
+
+      return;
+
+    }
+
+    if(
+      GM_SYSTEM.indexOf(
+        '【V62.1核心状态规则】'
+      )>=0
+    ){
+
+      return;
+
+    }
+
+    GM_SYSTEM+=
+      '\n\n【V62.1核心状态规则】\n'+
+
+      '1. 玩家途径字段统一使用正式“途径名”：占卜家、学徒、偷盗者、观众、歌颂者、水手、阅读者、秘祈人、不眠者、收尸人、战士、刺客、猎人、窥秘人、通识者、怪物、耕种者、药师、罪犯、囚犯、律师、仲裁人。\n'+
+
+      '2. “魔女、红祭司、愚者、黑暗、死神、黑皇帝、审判者、月亮、母亲、深渊、被缚者、错误、门、空想家、太阳、暴君、白塔、倒吊人、黄昏巨人”等是对应序列0终点/代表称谓，不得把它们填进 playerUpdate.path；例如魔女途径必须返回 path="刺客"。\n'+
+
+      '3. 当玩家进入非凡途径后，扮演法不再只是正文设定：需要在 stateChanges.actingUpdate 中按实际剧情更新 unlocked、role、principle、progress、risk、lastAct、note；只有真实发生扮演/消化行为时才增加 progress 或 digestDelta。\n'+
+
+      '4. 人性之锚不再只是说明文字。序列4及以上尤其要维护 stateChanges.anchorUpdate：enabled、strength、summary、anchors、broken；玩家建立或失去亲情、友情、信念、信仰、责任等真实锚点时同步更新。\n'+
+
+      '5. 居所必须真正落地。玩家通过购买、租赁、获得、继承、组织提供等剧情取得住处时，除了更新 playerUpdate.residence，还必须返回 addHouse；搬家/失去住所使用 updateHouse/removeHouse。不要只在正文说“你有了家”而不更新状态。\n'+
+
+      '6. 战斗只做“本轮临时战斗态势”，不建立长期战斗界面。若本轮真正发生战斗，可返回 battleUI 或 combat：active=true、enemyName、enemyHp、enemyMaxHp、enemyStatus、enemyPath、enemySeq、turn/round、lastOutcome、actions。战斗结束或下一轮未触发战斗时不要继续维持 active=true。\n'+
+
+      '7. NPC随身物品的 desc/description 不要使用“干净的XX，看起来平平无奇”“普通的XX”一类套话；应尽量根据物品名称、材质、用途、磨损、来源、神秘学性质写出具体但不过度脑补的描述。';
+
+  }
+
+  addRules();
+
+  ensureCoreState();
+
+  /* =========================================================
+     7. applyAI
+     ========================================================= */
+
+  if(
+    typeof window.applyAI==='function' &&
+    !window.applyAI.__v621Hooked
+  ){
+
+    var oldApply=
+      window.applyAI;
+
+    window.applyAI=function(
+      data,
+      action
+    ){
+
+      var prevResidence=
+        text(state.residence);
+
+      var safe=
+        data;
+
+      try{
+
+        if(
+          data &&
+          data.stateChanges
+        ){
+
+          safe=
+            clone(data)||
+            data;
+
+          var sc=
+            safe.stateChanges||
+            {};
+
+          if(
+            sc.playerUpdate
+          ){
+
+            if(
+              sc.playerUpdate.path
+            ){
+
+              sc.playerUpdate.path=
+                canonicalPath(
+                  sc.playerUpdate.path
+                );
+
+            }else if(
+              sc.playerUpdate.seq
+            ){
+
+              var inferred=
+                canonicalPath(
+                  sc.playerUpdate.seq
+                );
+
+              if(
+                inferred &&
+                inferred!==sc.playerUpdate.seq
+              ){
+
+                sc.playerUpdate.path=
+                  inferred;
+
+              }
+
+            }
+
+          }
+
+          if(
+            Array.isArray(
+              sc.addRelation
+            )
+          ){
+
+            sc.addRelation.forEach(
+              function(r){
+
+                if(
+                  r &&
+                  r.path
+                ){
+
+                  r.path=
+                    canonicalPath(
+                      r.path
+                    );
+
+                }
+
+              }
+            );
+
+          }
+
+        }
+
+        if(
+          safe &&
+          Array.isArray(
+            safe.npcUpdates
+          )
+        ){
+
+          safe.npcUpdates.forEach(
+            function(u){
+
+              if(
+                u &&
+                u.path
+              ){
+
+                u.path=
+                  canonicalPath(
+                    u.path
+                  );
+
+              }
+
+            }
+          );
+
+        }
+
+      }catch(e){
+
+        safe=
+          data;
+
+      }
+
+      var result=
+        oldApply.call(
+          this,
+          safe,
+          action
+        );
+
+      try{
+
+        ensureCoreState();
+
+        /*
+         * 旧档不会在启动时被批量迁移。
+         * 从下一轮开始继续游戏时，才把“魔女/红祭司”等
+         * 非正式途径称谓纠正为真正途径名。
+         */
+
+        var cp=
+          canonicalPath(
+            state.path
+          );
+
+        if(
+          cp &&
+          cp!==state.path &&
+          /^(占卜家|学徒|偷盗者|观众|歌颂者|水手|阅读者|秘祈人|不眠者|收尸人|战士|刺客|猎人|窥秘人|通识者|怪物|耕种者|药师|罪犯|囚犯|律师|仲裁人)$/.test(cp)
+        ){
+
+          state.path=
+            cp;
+
+        }
+
+        if(
+          safe &&
+          safe.stateChanges
+        ){
+
+          var sc2=
+            safe.stateChanges;
+
+          if(
+            sc2.actingUpdate
+          ){
+
+            applyActingUpdate(
+              sc2.actingUpdate
+            );
+
+          }
+
+          if(
+            sc2.anchorUpdate
+          ){
+
+            applyAnchorUpdate(
+              sc2.anchorUpdate
+            );
+
+          }
+
+          applyHouseChanges(
+            sc2
+          );
+
+        }
+
+        syncResidenceToHouse(
+          prevResidence
+        );
+
+        refreshNpcBags();
+
+        /*
+         * 让原来的回退/重新生成也能恢复
+         * 扮演法和人性之锚。
+         */
+
+        try{
+
+          var top=
+            historyStack &&
+            historyStack[
+              historyStack.length-1
+            ];
+
+          if(top){
+
+            top.state._v621Acting=
+              clone(
+                state._v621Acting
+              );
+
+            top.state._v621Anchor=
+              clone(
+                state._v621Anchor
+              );
+
+          }
+
+        }catch(e){}
+
+        renderCoreState();
+
+        renderTurnBattle(
+          safe
+        );
+
+        /*
+         * 不再让原 V60/V14 战斗面板长期存在。
+         */
+
+        try{
+
+          if(
+            state._v60Combat
+          ){
+
+            state._v60Combat.active=
+              false;
+
+          }
+
+          [
+            'v60CombatPanel',
+            'battlePanel'
+          ].forEach(
+            function(id){
+
+              var el=
+                document.getElementById(
+                  id
+                );
+
+              if(el){
+
+                el.style.display=
+                  'none';
+
+              }
+
+            }
+          );
+
+        }catch(e){}
+
+      }catch(e){
+
+        console.warn(
+          '[V62.1] apply reconcile',
+          e
+        );
+
+      }
+
+      return result;
+
+    };
+
+    window.applyAI.__v621Hooked=
+      true;
+
+  }
+
+  /* =========================================================
+     8. 下一轮开始时清掉上一轮战斗UI
+     同时把新的动态状态送给AI
+     ========================================================= */
+
+  if(
+    typeof window.execute==='function' &&
+    !window.execute.__v621Hooked
+  ){
+
+    var oldExecute=
+      window.execute;
+
+    window.execute=
+      async function(){
+
+        clearTurnBattlePanel();
+
+        ensureCoreState();
+
+        var baseGM=
+          null;
+
+        try{
+
+          if(
+            typeof GM_SYSTEM==='string'
+          ){
+
+            baseGM=
+              GM_SYSTEM;
+
+            var act=
+              state._v621Acting;
+
+            var an=
+              state._v621Anchor;
+
+            var houses=
+              Array.isArray(state.houses)
+              ?
+              state.houses
+              :
+              [];
+
+            GM_SYSTEM=
+              baseGM+
+              '\n\n【V62.1当前玩家核心状态】\n'+
+              '途径：'+
+              (
+                canonicalPath(
+                  state.path
+                )||
+                state.path||
+                '普通人'
+              )+
+              '\n'+
+              '序列：'+
+              (
+                state.seq||
+                '凡俗'
+              )+
+              '\n'+
+              '扮演：'+
+              JSON.stringify(
+                act
+              )+
+              '\n'+
+              '人性之锚：'+
+              JSON.stringify(
+                an
+              )+
+              '\n'+
+              '当前居所：'+
+              (
+                state.residence||
+                '无'
+              )+
+              '\n'+
+              '安全据点：'+
+              JSON.stringify(
+                houses.slice(-8)
+              );
+
+          }
+
+          return await oldExecute.apply(
+            this,
+            arguments
+          );
+
+        }finally{
+
+          try{
+
+            if(
+              baseGM!==null
+            ){
+
+              GM_SYSTEM=
+                baseGM;
+
+            }
+
+          }catch(e){}
+
+          try{
+
+            renderCoreState();
+
+          }catch(e){}
+
+        }
+
+      };
+
+    window.execute.__v621Hooked=
+      true;
+
+  }
+
+  /* =========================================================
+     9. 存档
+     旧档可以正常读取；
+     新产生的存档会增加两个新状态。
+     ========================================================= */
+
+  if(
+    typeof window.buildSave==='function' &&
+    !window.buildSave.__v621Hooked
+  ){
+
+    var oldBuild=
+      window.buildSave;
+
+    window.buildSave=
+      function(){
+
+        var s=
+          oldBuild.apply(
+            this,
+            arguments
+          );
+
+        try{
+
+          ensureCoreState();
+
+          if(
+            !s.system
+          ){
+
+            s.system={};
+
+          }
+
+          s.system.v621Acting=
+            clone(
+              state._v621Acting
+            );
+
+          s.system.v621Anchor=
+            clone(
+              state._v621Anchor
+            );
+
+        }catch(e){}
+
+        return s;
+
+      };
+
+    window.buildSave.__v621Hooked=
+      true;
+
+  }
+
+  if(
+    typeof window.applySave==='function' &&
+    !window.applySave.__v621Hooked
+  ){
+
+    var oldSave=
+      window.applySave;
+
+    window.applySave=
+      function(d){
+
+        var r=
+          oldSave.apply(
+            this,
+            arguments
+          );
+
+        try{
+
+          if(
+            d &&
+            d.system
+          ){
+
+            if(
+              d.system.v621Acting
+            ){
+
+              state._v621Acting=
+                clone(
+                  d.system.v621Acting
+                );
+
+            }
+
+            if(
+              d.system.v621Anchor
+            ){
+
+              state._v621Anchor=
+                clone(
+                  d.system.v621Anchor
+                );
+
+            }
+
+          }
+
+          ensureCoreState();
+
+          renderCoreState();
+
+        }catch(e){}
+
+        return r;
+
+      };
+
+    window.applySave.__v621Hooked=
+      true;
+
+  }
+
+  if(
+    typeof window.resetWorldState==='function' &&
+    !window.resetWorldState.__v621Hooked
+  ){
+
+    var oldReset=
+      window.resetWorldState;
+
+    window.resetWorldState=
+      function(){
+
+        var r=
+          oldReset.apply(
+            this,
+            arguments
+          );
+
+        state._v621Acting={
+          unlocked:false,
+          role:'',
+          principle:'',
+          progress:0,
+          risk:0,
+          lastAct:'',
+          note:''
+        };
+
+        state._v621Anchor={
+          enabled:false,
+          strength:0,
+          maxStrength:100,
+          summary:'',
+          broken:false,
+          anchors:[],
+          change:'',
+          note:''
+        };
+
+        return r;
+
+      };
+
+    window.resetWorldState.__v621Hooked=
+      true;
+
+  }
+
+  /* =========================================================
+     10. NPC打开档案时强制修正旧物品套话
+     ========================================================= */
+
+  if(
+    typeof window.openCharModal==='function' &&
+    !window.openCharModal.__v621NpcItemHooked
+  ){
+
+    var oldOpenChar=
+      window.openCharModal;
+
+    window.openCharModal=
+      function(name){
+
+        try{
+
+          var r=
+            state.relations &&
+            state.relations[name];
+
+          if(
+            r &&
+            Array.isArray(r.bag)
+          ){
+
+            r.bag.forEach(
+              enrichNpcItem
+            );
+
+          }
+
+        }catch(e){}
+
+        var result=
+          oldOpenChar.apply(
+            this,
+            arguments
+          );
+
+        try{
+
+          var r2=
+            state.relations &&
+            state.relations[name];
+
+          if(
+            r2 &&
+            Array.isArray(r2.bag)
+          ){
+
+            r2.bag.forEach(
+              enrichNpcItem
+            );
+
+          }
+
+        }catch(e){}
+
+        return result;
+
+      };
+
+    window.openCharModal.__v621NpcItemHooked=
+      true;
+
+  }
+
+  /* =========================================================
+     11. 隐藏原有持久战斗UI
+     只保留V62.1本轮临时面板
+     ========================================================= */
+
+  if(
+    typeof window.renderUI==='function' &&
+    !window.renderUI.__v621BattleUiHooked
+  ){
+
+    var oldRenderUI=
+      window.renderUI;
+
+    window.renderUI=
+      function(){
+
+        var r=
+          oldRenderUI.apply(
+            this,
+            arguments
+          );
+
+        try{
+
+          renderCoreState();
+
+          [
+            'v60CombatPanel',
+            'battlePanel'
+          ].forEach(
+            function(id){
+
+              var e=
+                document.getElementById(
+                  id
+                );
+
+              if(e){
+
+                e.style.display=
+                  'none';
+
+              }
+
+            }
+          );
+
+        }catch(e){}
+
+        return r;
+
+      };
+
+    window.renderUI.__v621BattleUiHooked=
+      true;
+
+  }
+
+  renderCoreState();
+
+  console.log(
+    '%c[V62.1] ✅ 途径标准化 / 扮演法 / 人性之锚 / 居所 / NPC物品 / 本轮战斗UI已挂载',
+    'color:#2563eb;font-weight:700'
+  );
+
+})();
+/* ▲▲▲ V62.1 结束 ▲▲▲ */
 </script>
 </body>
 </html>
