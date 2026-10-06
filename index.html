@@ -17436,6 +17436,4777 @@ console.log(
 
 })();
 /* ▲▲▲ V61.5 结束 ▲▲▲ */
+/* ▼▼▼ V62.6 · NPC物品鉴识 + 逐轮物品更新安全层 ▼▼▼ */
+(function(){
+  'use strict';
+
+  if (window.__V626_ITEM_SAFE_PATCH__) return;
+  window.__V626_ITEM_SAFE_PATCH__ = true;
+
+  var V626_SLOTS = {
+    head: 1,
+    body: 1,
+    legs: 1,
+    feet: 1,
+    weapon: 1,
+    accessory: 1
+  };
+
+  var V626_META_KEYS = [
+    'desc',
+    'description',
+    'category',
+    'type',
+    'equipable',
+    'slot',
+    'bonuses',
+    'combatEffects',
+    'rarity',
+    'source',
+    'note'
+  ];
+
+  var V626_BAD_DESC =
+    /(GM\s*尚未给出描述|GM\s*尚未给出说明|GM\s*未给出描述|GM\s*未给出说明|尚未给出描述|尚未给出说明|一件普通的凡俗器物|普通的凡俗器物或非凡材料|该物品的信息尚未完全确认)/i;
+
+
+  /* ============================================================
+     一、基础工具
+     ============================================================ */
+
+  function v626Clone(v){
+    try{
+      return JSON.parse(JSON.stringify(v));
+    }catch(e){
+      return v;
+    }
+  }
+
+  function v626Name(item){
+    return item && item.name ? String(item.name).trim() : '';
+  }
+
+  function v626ValidSlot(v){
+    v = String(v || '').trim();
+    return V626_SLOTS[v] ? v : '';
+  }
+
+  function v626ExplicitSlot(item){
+    if (!item) return '';
+
+    return v626ValidSlot(
+      item.slot ||
+      item.equipSlot ||
+      item.equipmentSlot ||
+      ''
+    );
+  }
+
+  function v626ExplicitEquip(item){
+    if (!item) return false;
+
+    if (item.equipable === true) return true;
+    if (item.equippable === true) return true;
+    if (v626ExplicitSlot(item)) return true;
+
+    return false;
+  }
+
+
+  /* ============================================================
+     二、只允许旧版4件固定装备继续依赖 ESTATS
+     不删除，不冻结，不改 ESTATS
+     ============================================================ */
+
+  function v626LegacyEquip(name){
+    try{
+      if(
+        typeof ESTATS === 'undefined' ||
+        !ESTATS ||
+        !name
+      ){
+        return null;
+      }
+
+      if(
+        name === '粗布衣物' ||
+        name === '旧皮鞋' ||
+        name === '左轮手枪' ||
+        name === '纯银灵摆'
+      ){
+        return ESTATS[name] || null;
+      }
+
+    }catch(e){}
+
+    return null;
+  }
+
+
+  /* ============================================================
+     三、真实描述识别
+     NPC 永远禁止从 ESTATS 借描述
+     ============================================================ */
+
+  function v626Desc(item, type){
+    if (!item) return '';
+
+    var arr = [
+      item.desc,
+      item.description,
+      item.detail,
+      item.info,
+      item.effectDesc
+    ];
+
+    for(var i = 0; i < arr.length; i++){
+
+      if(
+        arr[i] === undefined ||
+        arr[i] === null
+      ){
+        continue;
+      }
+
+      var s = String(arr[i]).trim();
+
+      if(
+        s &&
+        !V626_BAD_DESC.test(s)
+      ){
+        return s;
+      }
+    }
+
+    /*
+     * 只有玩家的旧版固定装备允许从 ESTATS 取描述。
+     * NPC 完全禁止。
+     */
+    if(type !== 'npc_readonly'){
+
+      var legacy =
+        v626LegacyEquip(
+          v626Name(item)
+        );
+
+      if(
+        legacy &&
+        legacy.desc &&
+        !V626_BAD_DESC.test(
+          String(legacy.desc)
+        )
+      ){
+        return String(legacy.desc);
+      }
+    }
+
+    return '';
+  }
+
+
+  /* ============================================================
+     四、装备判定
+     NPC：只认 AI 明确 equipable / slot
+     玩家：保留旧4件，显式装备优先
+     ============================================================ */
+
+  function v626PlayerSlot(item, type){
+
+    if(!item) return '';
+
+    var explicit =
+      v626ExplicitSlot(item);
+
+    if(explicit){
+      return explicit;
+    }
+
+    if(v626ExplicitEquip(item)){
+      return '';
+    }
+
+    if(type === 'npc_readonly'){
+      return '';
+    }
+
+    /*
+     * bagEquip 本身就是旧版已经被分到“未穿戴装备”的区域。
+     * 只在这里兼容原来的 ESTATS，不扩散到 NPC。
+     */
+    if(type === 'bagEquip'){
+
+      try{
+
+        if(
+          typeof ESTATS !== 'undefined' &&
+          ESTATS &&
+          ESTATS[v626Name(item)]
+        ){
+          return v626ValidSlot(
+            ESTATS[v626Name(item)].type || ''
+          );
+        }
+
+      }catch(e){}
+    }
+
+    /*
+     * 旧版固定装备兼容
+     */
+    var legacy =
+      v626LegacyEquip(
+        v626Name(item)
+      );
+
+    return legacy ?
+      v626ValidSlot(
+        legacy.type || ''
+      ) :
+      '';
+  }
+
+
+  function v626NpcSlot(item){
+
+    if(!item) return '';
+
+    /*
+     * NPC 永远只信显式 slot。
+     * 不做名字关键词猜测。
+     */
+    return v626ExplicitSlot(item);
+  }
+
+
+  function v626IsNpcEquip(item){
+
+    if(!item) return false;
+
+    return !!(
+      v626NpcSlot(item) ||
+      item.equipable === true ||
+      item.equippable === true
+    );
+  }
+
+
+  /* ============================================================
+     五、安全 HTML
+     ============================================================ */
+
+  function v626Esc(v){
+
+    return String(
+      v === undefined || v === null ? '' : v
+    )
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;')
+    .replace(/'/g,'&#39;');
+  }
+
+
+  /* ============================================================
+     六、风险物品重新渲染
+     只拦截：
+     - NPC物品
+     - 明确装备
+     - 被V29误塞进ESTATS的普通物品
+     不替换整个UI体系
+     ============================================================ */
+
+  function v626RenderItem(item, idx, type){
+
+    if(
+      !item ||
+      !item.name
+    ){
+      return false;
+    }
+
+    var isNpc =
+      type === 'npc_readonly';
+
+    var slot =
+      isNpc ?
+      v626NpcSlot(item) :
+      v626PlayerSlot(item, type);
+
+    var isEq =
+      !!slot ||
+      (!isNpc && type === 'bagEquip');
+
+    var desc =
+      v626Desc(item, type);
+
+    window.curItem = {
+      item: item,
+      idx: idx,
+      type: type || 'bag'
+    };
+
+    var icon =
+      isEq ? '🛡️' : '📦';
+
+    var label;
+
+    if(isNpc){
+
+      label =
+        isEq ?
+        'NPC装备（只读）' :
+        'NPC随身物品（只读）';
+
+    }else{
+
+      label =
+        isEq ?
+        '可着装构件' :
+        '随身杂物';
+    }
+
+    var slotText =
+      slot ?
+      ' · 槽位 ' +
+      v626Esc(slot) :
+      '';
+
+    var detail =
+      desc ?
+      v626Esc(desc) :
+      '当前轮尚未获得可验证的物品描述。下一轮世界推演会继续鉴识此物品。';
+
+    $('itemTitle').innerHTML =
+      '物品鉴识 <span id="closeItemBtnInner">×</span>';
+
+    var h =
+      '<div style="font-size:40px;margin-bottom:8px;text-align:center">' +
+      icon +
+      '</div>' +
+
+      '<div style="font-size:15px;color:var(--bronze-dark);font-weight:700;text-align:center">' +
+      v626Esc(item.name) +
+      '</div>' +
+
+      '<div style="font-size:11px;color:var(--tx-dim);text-align:center;margin-bottom:12px">' +
+      label +
+      slotText +
+      ' · 数量 ' +
+      (item.qty || 1) +
+      '</div>';
+
+    h +=
+      '<div style="background:#f5efe2;padding:10px;border-radius:6px;font-size:12px;line-height:1.7;margin-bottom:10px">' +
+      detail +
+      '</div>';
+
+
+    /*
+     * 只有玩家装备继续显示旧 ESTATS 数值。
+     * NPC 不读取 ESTATS。
+     */
+    if(
+      !isNpc &&
+      isEq
+    ){
+
+      var stat = null;
+
+      try{
+
+        if(
+          typeof ESTATS !== 'undefined' &&
+          ESTATS &&
+          ESTATS[item.name]
+        ){
+          stat = ESTATS[item.name];
+        }
+
+      }catch(e){}
+
+
+      if(stat){
+
+        h +=
+          '<div style="background:#efe8d7;padding:10px;border-radius:6px;font-size:11px">' +
+
+          (
+            stat.hp ?
+            '<div class="row"><span>体能加持</span><span class="v good">+' +
+            stat.hp +
+            '</span></div>' :
+            ''
+          ) +
+
+          (
+            stat.mp ?
+            '<div class="row"><span>灵性共鸣</span><span class="v" style="color:var(--cosmic-blue)">+' +
+            stat.mp +
+            '</span></div>' :
+            ''
+          ) +
+
+          (
+            stat.sp ?
+            '<div class="row"><span>精神意志</span><span class="v" style="color:var(--cosmic-purple)">+' +
+            stat.sp +
+            '</span></div>' :
+            ''
+          ) +
+
+          (
+            stat.san ?
+            '<div class="row"><span>理智稳定</span><span class="v gold">+' +
+            stat.san +
+            '</span></div>' :
+            ''
+          ) +
+
+          '</div>';
+      }
+    }
+
+
+    $('itemDetail').innerHTML = h;
+
+
+    if(isNpc){
+
+      $('itemDiscardBtn').style.display =
+        'none';
+
+      $('itemActionBtn').style.display =
+        'none';
+
+    }else{
+
+      $('itemDiscardBtn').style.display =
+        'inline-flex';
+
+      $('itemActionBtn').style.display =
+        'inline-flex';
+
+      var b =
+        $('itemActionBtn');
+
+      b.textContent =
+        isEq ?
+        '佩戴至身上' :
+        '使用 / 探查';
+
+      b.onclick =
+        function(){
+
+          try{
+
+            if(isEq){
+
+              if(
+                typeof window.equipCur === 'function'
+              ){
+                window.equipCur();
+              }
+
+            }else if(
+              typeof window.useCur === 'function'
+            ){
+
+              window.useCur();
+            }
+
+          }catch(e){
+
+            console.warn(
+              '[V62.6] item action failed',
+              e
+            );
+          }
+
+        };
+    }
+
+
+    $('itemModal').classList.add('show');
+
+    if($('closeItemBtnInner')){
+
+      $('closeItemBtnInner').onclick =
+        window.closeItemModal;
+    }
+
+    return true;
+  }
+
+
+  /* ============================================================
+     七、只包裹 openItemDetail
+     不动 ESTATS
+     不动 V29 原逻辑
+     ============================================================ */
+
+  if(
+    typeof window.openItemDetail === 'function' &&
+    !window.openItemDetail.__v626Wrapped
+  ){
+
+    var v626OldOpen =
+      window.openItemDetail;
+
+    window.openItemDetail =
+      function(item, idx, type){
+
+        try{
+
+          var npc =
+            type === 'npc_readonly';
+
+          var explicit =
+            v626ExplicitEquip(item) ||
+            !!v626ExplicitSlot(item);
+
+          var hasBadDesc =
+            !v626Desc(item, type);
+
+          var hasV29Stat =
+            false;
+
+          try{
+
+            hasV29Stat = !!(
+              item &&
+              item.name &&
+              typeof ESTATS !== 'undefined' &&
+              ESTATS[item.name]
+            );
+
+          }catch(e){}
+
+
+          var isLegacy =
+            !!v626LegacyEquip(
+              v626Name(item)
+            );
+
+
+          /*
+           * NPC：
+           * 永远由 V62.6 控制鉴识。
+           *
+           * 玩家：
+           * 明确装备 / V29误判 / 缺失描述
+           * 才进入这里。
+           */
+          if(
+            npc ||
+            explicit ||
+            (
+              hasV29Stat &&
+              !isLegacy
+            ) ||
+            (
+              hasBadDesc &&
+              npc
+            )
+          ){
+
+            return v626RenderItem(
+              item,
+              idx,
+              type || 'bag'
+            );
+          }
+
+        }catch(e){
+
+          console.warn(
+            '[V62.6] openItemDetail wrapper failed',
+            e
+          );
+        }
+
+
+        /*
+         * 不属于本补丁处理范围的，
+         * 继续交还原始 openItemDetail。
+         */
+        return v626OldOpen.apply(
+          this,
+          arguments
+        );
+      };
+
+    window.openItemDetail.__v626Wrapped =
+      true;
+  }
+
+
+  /* ============================================================
+     八、NPC bag 规范化
+     ============================================================ */
+
+  function v626NormalizeNpcBag(bag){
+
+    if(!Array.isArray(bag)){
+      return [];
+    }
+
+    return bag
+      .map(function(it){
+
+        if(!it){
+          return null;
+        }
+
+        if(
+          typeof it === 'string'
+        ){
+
+          return {
+            name: it,
+            qty: 1
+          };
+        }
+
+        if(
+          typeof it === 'object'
+        ){
+
+          if(
+            !it.qty ||
+            it.qty < 1
+          ){
+
+            it.qty = 1;
+          }
+
+          return it;
+        }
+
+        return null;
+      })
+      .filter(Boolean);
+  }
+
+
+  /* ============================================================
+     九、每轮 AI 前：
+     保存所有 NPC 旧物品的真实元数据
+     ============================================================ */
+
+  function v626SnapshotNpcItems(){
+
+    var snap = {};
+
+    try{
+
+      Object.keys(
+        state.relations || {}
+      ).forEach(function(n){
+
+        var r =
+          state.relations[n];
+
+        var bag =
+          v626NormalizeNpcBag(
+            r && r.bag
+          );
+
+        snap[n] = {};
+
+        bag.forEach(function(it){
+
+          if(!it.name){
+            return;
+          }
+
+          var meta = {};
+
+          V626_META_KEYS.forEach(function(k){
+
+            if(
+              it[k] !== undefined &&
+              it[k] !== null &&
+              it[k] !== ''
+            ){
+
+              meta[k] =
+                v626Clone(it[k]);
+            }
+
+          });
+
+          if(
+            Object.keys(meta).length
+          ){
+
+            snap[n][it.name] =
+              meta;
+          }
+
+        });
+
+      });
+
+    }catch(e){
+
+      console.warn(
+        '[V62.6] NPC item snapshot failed',
+        e
+      );
+    }
+
+    return snap;
+  }
+
+
+  function v626IsBadDesc(v){
+
+    return (
+      !v ||
+      V626_BAD_DESC.test(
+        String(v)
+      )
+    );
+  }
+
+
+  /* ============================================================
+     十、恢复旧NPC物品元数据
+     AI 没重新给描述时：
+     不允许旧描述凭空消失
+     ============================================================ */
+
+  function v626ApplyMeta(
+    item,
+    meta,
+    overwrite
+  ){
+
+    if(
+      !item ||
+      !meta
+    ){
+      return;
+    }
+
+    V626_META_KEYS.forEach(function(k){
+
+      var v =
+        meta[k];
+
+      if(
+        v === undefined ||
+        v === null ||
+        v === ''
+      ){
+        return;
+      }
+
+
+      if(
+        k === 'desc' ||
+        k === 'description'
+      ){
+
+        if(
+          overwrite ||
+          (
+            v626IsBadDesc(
+              item.desc
+            ) &&
+            v626IsBadDesc(
+              item.description
+            )
+          )
+        ){
+
+          item[k] =
+            v626Clone(v);
+        }
+
+      }else if(
+        overwrite ||
+        item[k] === undefined ||
+        item[k] === null ||
+        item[k] === ''
+      ){
+
+        item[k] =
+          v626Clone(v);
+      }
+
+    });
+  }
+
+
+  function v626MergeNpcSnapshots(snap){
+
+    try{
+
+      Object.keys(
+        state.relations || {}
+      ).forEach(function(n){
+
+        var r =
+          state.relations[n];
+
+        if(!r){
+          return;
+        }
+
+        r.bag =
+          v626NormalizeNpcBag(
+            r.bag
+          );
+
+        var oldMap =
+          snap[n] || {};
+
+        r.bag.forEach(function(it){
+
+          if(
+            !it ||
+            !it.name
+          ){
+            return;
+          }
+
+          var old =
+            oldMap[it.name];
+
+          if(old){
+
+            v626ApplyMeta(
+              it,
+              old,
+              false
+            );
+          }
+
+        });
+
+      });
+
+    }catch(e){
+
+      console.warn(
+        '[V62.6] NPC item snapshot merge failed',
+        e
+      );
+    }
+  }
+
+
+  /* ============================================================
+     十一、AI 本轮 npcItemUpdates 应用器
+     ============================================================ */
+
+  function v626ApplyOneNpcUpdate(
+    npcName,
+    itemData
+  ){
+
+    if(
+      !npcName ||
+      !itemData ||
+      !itemData.name
+    ){
+      return;
+    }
+
+    var r =
+      state.relations &&
+      state.relations[npcName];
+
+    if(!r){
+      return;
+    }
+
+    r.bag =
+      v626NormalizeNpcBag(
+        r.bag
+      );
+
+    var item = null;
+
+    for(
+      var i = 0;
+      i < r.bag.length;
+      i++
+    ){
+
+      if(
+        r.bag[i] &&
+        r.bag[i].name === itemData.name
+      ){
+
+        item =
+          r.bag[i];
+
+        break;
+      }
+    }
+
+
+    /*
+     * AI 明确提供了 NPC 当前仍持有的新物品：
+     * 允许建立实体。
+     */
+    if(!item){
+
+      item = {
+        name: itemData.name,
+        qty:
+          itemData.qty || 1
+      };
+
+      r.bag.push(item);
+    }
+
+
+    /*
+     * AI 明确新值：
+     * 覆盖旧元数据。
+     */
+    v626ApplyMeta(
+      item,
+      itemData,
+      true
+    );
+
+
+    if(
+      itemData.qty !== undefined &&
+      itemData.qty !== null
+    ){
+
+      item.qty =
+        itemData.qty;
+    }
+  }
+
+
+  function v626ApplyNpcUpdates(data){
+
+    if(!data){
+      return;
+    }
+
+    try{
+
+      /*
+       * 标准格式：
+       * npcItemUpdates:[
+       *   {
+       *     npc:"NPC",
+       *     items:[...]
+       *   }
+       * ]
+       */
+      if(
+        Array.isArray(
+          data.npcItemUpdates
+        )
+      ){
+
+        data.npcItemUpdates
+          .forEach(function(u){
+
+            if(!u){
+              return;
+            }
+
+            var npcName =
+              u.npc ||
+              u.name ||
+              u.npcName;
+
+
+            if(
+              Array.isArray(u.items)
+            ){
+
+              u.items.forEach(
+                function(it){
+
+                  v626ApplyOneNpcUpdate(
+                    npcName,
+                    it
+                  );
+
+                }
+              );
+
+            }else if(
+              u.item &&
+              typeof u.item === 'object'
+            ){
+
+              v626ApplyOneNpcUpdate(
+                npcName,
+                u.item
+              );
+
+            }else if(
+              u.itemName
+            ){
+
+              var copy =
+                v626Clone(u);
+
+              copy.name =
+                u.itemName;
+
+              v626ApplyOneNpcUpdate(
+                npcName,
+                copy
+              );
+            }
+
+          });
+      }
+
+
+      /*
+       * 同时兼容另一种：
+       * itemUpdates:[
+       *   {
+       *     ownerType:"npc",
+       *     npc:"NPC",
+       *     item:{...}
+       *   }
+       * ]
+       */
+      if(
+        Array.isArray(
+          data.itemUpdates
+        )
+      ){
+
+        data.itemUpdates
+          .forEach(function(u){
+
+            if(
+              !u ||
+              (
+                u.ownerType &&
+                u.ownerType !== 'npc'
+              )
+            ){
+              return;
+            }
+
+            v626ApplyOneNpcUpdate(
+              u.npc ||
+              u.owner ||
+              u.npcName,
+              u.item || u
+            );
+
+          });
+      }
+
+    }catch(e){
+
+      console.warn(
+        '[V62.6] NPC item updates failed',
+        e
+      );
+    }
+  }
+
+
+  /* ============================================================
+     十二、每轮把NPC完整背包送给AI
+     只用于正式行动，不影响API测试
+     ============================================================ */
+
+  function v626BuildNpcPrompt(){
+
+    var lines = [];
+
+    try{
+
+      Object.keys(
+        state.relations || {}
+      ).forEach(function(n){
+
+        var r =
+          state.relations[n];
+
+        if(!r){
+          return;
+        }
+
+        var bag =
+          v626NormalizeNpcBag(
+            r.bag
+          );
+
+        if(!bag.length){
+          return;
+        }
+
+
+        lines.push(
+          '【NPC物品审计】' +
+          n
+        );
+
+
+        bag.forEach(function(it){
+
+          var desc =
+            v626Desc(
+              it,
+              'npc_readonly'
+            );
+
+          var slot =
+            v626NpcSlot(it);
+
+          var equip =
+            !!(
+              it.equipable === true ||
+              it.equippable === true ||
+              slot
+            );
+
+
+          lines.push(
+            '- ' +
+            it.name +
+            ' x' +
+            (it.qty || 1) +
+            ' | 描述=' +
+            (
+              desc ?
+              desc :
+              '缺失'
+            ) +
+            ' | equipable=' +
+            (
+              equip ?
+              'true' :
+              'false'
+            ) +
+            ' | slot=' +
+            (
+              slot ||
+              '无'
+            ) +
+            ' | category=' +
+            (
+              it.category ||
+              it.type ||
+              '未确认'
+            )
+          );
+
+        });
+
+      });
+
+    }catch(e){
+
+      console.warn(
+        '[V62.6] build NPC prompt failed',
+        e
+      );
+    }
+
+    return lines.join('\n');
+  }
+
+
+  /* ============================================================
+     十三、callAPI 最小包装
+     正式行动才追加NPC物品审计
+     ============================================================ */
+
+  if(
+    typeof window.callAPI === 'function' &&
+    !window.callAPI.__v626Wrapped
+  ){
+
+    var v626OldCallAPI =
+      window.callAPI;
+
+
+    window.callAPI =
+      async function(msgs, c){
+
+        try{
+
+          if(
+            Array.isArray(msgs) &&
+            msgs.length
+          ){
+
+            var last =
+              msgs[msgs.length - 1];
+
+            var content =
+              last &&
+              last.content ?
+              String(last.content) :
+              '';
+
+
+            /*
+             * 只识别正式行动。
+             * 测试连接和初始创生不加大包。
+             */
+            if(
+              last &&
+              last.role === 'user' &&
+              content.indexOf(
+                '【玩家此轮行动】'
+              ) >= 0
+            ){
+
+              var audit =
+                v626BuildNpcPrompt();
+
+              if(audit){
+
+                msgs =
+                  msgs.map(function(m){
+
+                    return {
+                      role: m.role,
+                      content: m.content
+                    };
+
+                  });
+
+
+                msgs[msgs.length - 1]
+                  .content =
+                  content +
+                  '\n\n【V62.6·NPC随身物品逐轮审计】\n' +
+                  audit +
+                  '\n\n' +
+                  '本轮必须继续核对以上每一个NPC物品。' +
+                  '无论旧物品还是新物品，都要给出当前确认状态；' +
+                  '若已经有可靠描述，默认沿用，只有剧情明确揭示新事实时才改写。' +
+                  '禁止返回“GM尚未给出描述”及任何同义占位语。' +
+                  '请在顶层返回 npcItemUpdates，' +
+                  '每个NPC覆盖其当前全部物品。' +
+                  '每个物品至少给 name、desc、equipable、slot、category。' +
+                  'NPC物品装备判断只能依据AI明确给出的 equipable:true 或 slot，' +
+                  '绝不能按物品名称猜测。';
+              }
+            }
+
+          }
+
+        }catch(e){
+
+          console.warn(
+            '[V62.6] callAPI audit hook failed',
+            e
+          );
+        }
+
+
+        /*
+         * 注意：
+         * 这里必须把“修改后的 msgs”
+         * 真正传给原 callAPI。
+         */
+        return v626OldCallAPI.call(
+          this,
+          msgs,
+          c
+        );
+      };
+
+
+    window.callAPI.__v626Wrapped =
+      true;
+  }
+
+
+  /* ============================================================
+     十四、applyAI 最小后置钩子
+     原 applyAI 永远先正常执行
+     ============================================================ */
+
+  if(
+    typeof window.applyAI === 'function' &&
+    !window.applyAI.__v626Wrapped
+  ){
+
+    var v626OldApplyAI =
+      window.applyAI;
+
+
+    window.applyAI =
+      function(data, action){
+
+        /*
+         * 1. 先做旧NPC物品快照
+         */
+        var snap =
+          v626SnapshotNpcItems();
+
+
+        /*
+         * 2. 先执行原有全部AI状态更新
+         *
+         * B/C/D/E/F/N/O/P 等原模块
+         * 全部先照旧运行。
+         */
+        var result =
+          v626OldApplyAI.apply(
+            this,
+            arguments
+          );
+
+
+        /*
+         * 3. 只在原函数完成以后处理NPC物品。
+         * 自己的错误绝不能打断原模块。
+         */
+        try{
+
+          v626MergeNpcSnapshots(
+            snap
+          );
+
+          v626ApplyNpcUpdates(
+            data
+          );
+
+
+          Object.keys(
+            state.relations || {}
+          ).forEach(function(n){
+
+            state.relations[n].bag =
+              v626NormalizeNpcBag(
+                state.relations[n].bag
+              );
+
+          });
+
+        }catch(e){
+
+          console.warn(
+            '[V62.6] post-apply NPC item reconciliation failed',
+            e
+          );
+        }
+
+
+        return result;
+      };
+
+
+    window.applyAI.__v626Wrapped =
+      true;
+  }
+
+
+  /* ============================================================
+     十五、GM_SYSTEM 只追加，不 replace
+     ============================================================ */
+
+  try{
+
+    if(
+      typeof window.GM_SYSTEM === 'string' &&
+      window.GM_SYSTEM.indexOf(
+        'V62.6·NPC物品逐轮更新铁律'
+      ) < 0
+    ){
+
+      window.GM_SYSTEM +=
+        '\n\n【V62.6·NPC物品逐轮更新铁律】\n' +
+
+        '1. 每一轮正式行动后，必须复核当前 state.relations 中所有NPC的全部随身物品，旧物品也不能跳过。\n' +
+
+        '2. 顶层返回 npcItemUpdates：[{\"npc\":\"NPC名\",\"items\":[{\"name\":\"物品名\",\"qty\":1,\"desc\":\"当前可验证的具体描述\",\"category\":\"器物/服装/文件/材料/饰品/武器等\",\"equipable\":false,\"slot\":\"\"}]}]。每个NPC覆盖其当前全部物品。\n' +
+
+        '3. 已存在且可靠的描述默认原样沿用；只有剧情、观察或原著资料产生了明确新信息时才改写。不得把旧物品重新写成空泛模板。\n' +
+
+        '4. 绝对禁止“GM尚未给出描述”“GM 尚未给出描述”“未知物品”“一个东西”等占位语。缺失描述时必须给出当前可验证的实体描述；无法确认的部分可以明确写“材质未知/来源未知”，但仍要说明它具体是什么。\n' +
+
+        '5. NPC物品是否为装备与它是什么完全分离。NPC只有在 equipable:true 或 slot 为 head/body/legs/feet/weapon/accessory 时才算装备，禁止仅凭物品名称猜测装备。\n' +
+
+        '6. npcItemUpdates只补充/更新NPC自己的物品，不得把NPC物品重复添加进玩家背包。\n';
+    }
+
+  }catch(e){
+
+    console.warn(
+      '[V62.6] GM_SYSTEM append failed',
+      e
+    );
+  }
+
+
+  console.log(
+    '[V62.6] ✅ NPC物品只读鉴识、逐轮描述更新与占位符隔离已挂载'
+  );
+
+})();
+ /* ▲▲▲ V62.6 · NPC物品鉴识 + 逐轮物品更新安全层 ▲▲▲ */
+/* ▼▼▼ V64 · 玩家物品 + NPC档案 + 长期记忆 + 正文双向同步 + 联网核验 + 战斗安全层 ▼▼▼ */
+
+(function(){
+  'use strict';
+
+  if (window.__V64_SAFE_BILATERAL_SYNC__) return;
+  window.__V64_SAFE_BILATERAL_SYNC__ = true;
+
+  /* ============================================================
+     一、基础工具
+     ============================================================ */
+
+  function cloneV64(v){
+    try{
+      return JSON.parse(JSON.stringify(v));
+    }catch(e){
+      return null;
+    }
+  }
+
+  function escV64(v){
+    return String(v === undefined || v === null ? '' : v)
+      .replace(/&/g,'&amp;')
+      .replace(/</g,'&lt;')
+      .replace(/>/g,'&gt;')
+      .replace(/"/g,'&quot;')
+      .replace(/'/g,'&#39;');
+  }
+
+  function numV64(v,d){
+    var n = Number(v);
+    return isFinite(n) ? n : d;
+  }
+
+  function arrV64(v){
+    return Array.isArray(v) ? v : [];
+  }
+
+  function toastV64(s){
+    try{
+      if(typeof toast === 'function') toast(s);
+    }catch(e){}
+  }
+
+  function ensureV64(){
+    if(!window.state) return false;
+
+    if(!state.equip || typeof state.equip !== 'object'){
+      state.equip = {};
+    }
+
+    var slots = ['head','body','legs','feet','weapon','accessory'];
+
+    slots.forEach(function(k){
+      if(!Object.prototype.hasOwnProperty.call(state.equip,k)){
+        state.equip[k] = null;
+      }
+    });
+
+    if(!Array.isArray(state.bag)) state.bag = [];
+    if(!Array.isArray(state.bagEquip)) state.bagEquip = [];
+    if(!Array.isArray(state.sealed)) state.sealed = [];
+    if(!state.relations || typeof state.relations !== 'object') state.relations = {};
+
+    if(!state._v64ItemMeta || typeof state._v64ItemMeta !== 'object'){
+      state._v64ItemMeta = {};
+    }
+
+    if(!state._v64Facts || typeof state._v64Facts !== 'object'){
+      state._v64Facts = {};
+    }
+
+    if(!state._v64Memory || typeof state._v64Memory !== 'object'){
+      state._v64Memory = {
+        turns: [],
+        important: [],
+        index: {}
+      };
+    }
+
+    if(!Array.isArray(state._v64Memory.turns)) state._v64Memory.turns = [];
+    if(!Array.isArray(state._v64Memory.important)) state._v64Memory.important = [];
+    if(!state._v64Memory.index || typeof state._v64Memory.index !== 'object'){
+      state._v64Memory.index = {};
+    }
+
+    return true;
+  }
+
+  if(!ensureV64()) return;
+
+
+  /* ============================================================
+     二、玩家装备系统
+     
+     核心修复：
+     1. 不再把所有 ESTATS 都当作可靠装备。
+     2. 不再让“杯子”等普通物品因为名字被误判成装备。
+     3. 裙子/连衣裙 → body
+     4. 鞋/靴 → feet
+     5. 帽子 → head
+     6. 武器 → weapon
+     7. 戒指/项链/灵摆等 → accessory
+     8. 普通物品保持普通物品。
+     ============================================================ */
+
+  var ORIGINAL_EQUIP_NAMES_V64 = {
+    '粗布衣物': true,
+    '旧皮鞋': true,
+    '左轮手枪': true,
+    '纯银灵摆': true
+  };
+
+  function slotFromNameV64(name){
+    var n = String(name || '');
+
+    /* 足部必须先判断，避免“鞋”被以前的规则丢进 legs */
+    if(/鞋|靴|皮鞋|长靴|短靴/.test(n)){
+      return 'feet';
+    }
+
+    /* 头部 */
+    if(/礼帽|帽子|帽|兜帽|头巾|面纱|发带|头冠|冠冕|王冠/.test(n)){
+      return 'head';
+    }
+
+    /* 武器 */
+    if(/左轮|手枪|步枪|猎枪|火枪|燧发枪|霰弹枪|来复枪|枪|匕首|短刃|小刀|折刀|军刀|短剑|长剑|大剑|弯刀|佩剑|骑士剑|刀|剑|斧|锤|棍|杖|矛|长矛|弓|弩|鞭/.test(n)){
+      return 'weapon';
+    }
+
+    /* 身体服装 */
+    if(/风衣|大衣|外套|披风|斗篷|礼服|衬衫|西装|背心|夹克|毛衣|长袍|法袍|袍子|制服|上衣|连衣裙|裙子|长裙|短裙|百褶裙|围裙/.test(n)){
+      return 'body';
+    }
+
+    /* 腿部 */
+    if(/长裤|短裤|裤子|牛仔裤|马裤|长袜|袜子|腿甲|护腿/.test(n)){
+      return 'legs';
+    }
+
+    /* 饰品 */
+    if(/戒指|项链|护符|胸针|首饰|灵摆|徽章|圣徽|耳环|手链|手镯|吊坠|挂坠|玉佩|手环|脚链/.test(n)){
+      return 'accessory';
+    }
+
+    return null;
+  }
+
+  function validSlotV64(s){
+    return s === 'head' ||
+           s === 'body' ||
+           s === 'legs' ||
+           s === 'feet' ||
+           s === 'weapon' ||
+           s === 'accessory';
+  }
+
+  function getItemSlotV64(item, hint){
+    item = item || {};
+
+    if(validSlotV64(item.slot)) return item.slot;
+    if(validSlotV64(item.equipSlot)) return item.equipSlot;
+
+    if(item.equipable === true && validSlotV64(hint)){
+      return hint;
+    }
+
+    var byName = slotFromNameV64(item.name);
+    if(byName) return byName;
+
+    if(ORIGINAL_EQUIP_NAMES_V64[item.name]){
+      if(item.name === '旧皮鞋') return 'feet';
+
+      try{
+        if(typeof ESTATS !== 'undefined' && ESTATS[item.name] && validSlotV64(ESTATS[item.name].type)){
+          var oldSlot = ESTATS[item.name].type;
+          if(oldSlot === 'legs' && /鞋|靴/.test(String(item.name))) return 'feet';
+          return oldSlot;
+        }
+      }catch(e){}
+    }
+
+    return null;
+  }
+
+  function isRealEquipV64(item){
+    if(!item || !item.name) return false;
+
+    if(item.equipable === false) return false;
+
+    if(validSlotV64(item.slot) || validSlotV64(item.equipSlot)){
+      return true;
+    }
+
+    if(item.equipable === true){
+      return true;
+    }
+
+    var slot = getItemSlotV64(item);
+    if(slot) return true;
+
+    /* 已经穿在身上的旧装备继续视为装备 */
+    var eqNames = Object.keys(state.equip || {});
+    for(var i=0;i<eqNames.length;i++){
+      if(state.equip[eqNames[i]] === item.name) return true;
+    }
+
+    return !!ORIGINAL_EQUIP_NAMES_V64[item.name];
+  }
+
+  function isSealedV64(name){
+    return /^[0-3]-/.test(String(name || ''));
+  }
+
+  function baseMetaV64(name){
+    var x = state._v64ItemMeta[name];
+
+    if(x && typeof x === 'object'){
+      return cloneV64(x) || {};
+    }
+
+    if(ORIGINAL_EQUIP_NAMES_V64[name]){
+      try{
+        if(typeof ESTATS !== 'undefined' && ESTATS[name]){
+          return {
+            hp: numV64(ESTATS[name].hp,0),
+            mp: numV64(ESTATS[name].mp,0),
+            sp: numV64(ESTATS[name].sp,0),
+            san: numV64(ESTATS[name].san,0),
+            desc: ESTATS[name].desc || '',
+            slot: ESTATS[name].type || slotFromNameV64(name)
+          };
+        }
+      }catch(e){}
+    }
+
+    return {
+      hp:0,
+      mp:0,
+      sp:0,
+      san:0,
+      desc:'',
+      slot:slotFromNameV64(name)
+    };
+  }
+
+  function rememberItemMetaV64(item, forcedSlot){
+    if(!item || !item.name) return null;
+
+    var meta = baseMetaV64(item.name);
+
+    var slot = getItemSlotV64(item, forcedSlot);
+    if(slot) meta.slot = slot;
+
+    ['hp','mp','sp','san','combatPower'].forEach(function(k){
+      if(item[k] !== undefined && item[k] !== null && item[k] !== ''){
+        meta[k] = numV64(item[k], meta[k] || 0);
+      }
+    });
+
+    if(item.description) meta.description = String(item.description);
+    if(item.desc) meta.desc = String(item.desc);
+    if(item.type) meta.type = String(item.type);
+
+    if(item.bonuses && typeof item.bonuses === 'object'){
+      meta.bonuses = cloneV64(item.bonuses) || {};
+    }
+
+    if(meta.slot || meta.description || meta.desc || meta.combatPower ||
+       meta.hp || meta.mp || meta.sp || meta.san){
+      state._v64ItemMeta[item.name] = meta;
+    }
+
+    return meta;
+  }
+
+  function ensureItemShapeV64(item){
+    if(!item) return null;
+
+    if(typeof item === 'string'){
+      item = {
+        name:item,
+        qty:1
+      };
+    }
+
+    if(typeof item !== 'object') return null;
+    if(!item.name && item.名称) item.name = item.名称;
+    if(!item.name && item.itemName) item.name = item.itemName;
+    if(!item.name) return null;
+
+    if(item.qty === undefined || item.qty === null || isNaN(Number(item.qty))){
+      item.qty = 1;
+    }
+
+    item.qty = Math.max(1, Number(item.qty) || 1);
+
+    var slot = getItemSlotV64(item);
+    if(slot && !item.slot) item.slot = slot;
+
+    rememberItemMetaV64(item, slot);
+
+    return item;
+  }
+
+  function mergeItemListV64(list){
+    var out = [];
+
+    arrV64(list).forEach(function(raw){
+      var item = ensureItemShapeV64(raw);
+      if(!item) return;
+
+      var found = null;
+
+      for(var i=0;i<out.length;i++){
+        if(out[i].name === item.name){
+          found = out[i];
+          break;
+        }
+      }
+
+      if(found){
+        found.qty = (found.qty || 1) + (item.qty || 1);
+
+        ['description','desc','slot','type','combatPower','hp','mp','sp','san'].forEach(function(k){
+          if(item[k] !== undefined && item[k] !== null && item[k] !== ''){
+            found[k] = item[k];
+          }
+        });
+
+        if(item.bonuses) found.bonuses = cloneV64(item.bonuses) || found.bonuses;
+      }else{
+        out.push(item);
+      }
+    });
+
+    return out;
+  }
+
+  function normalizePlayerInventoryV64(){
+    ensureV64();
+
+    var all = [];
+
+    arrV64(state.bag).forEach(function(x){
+      all.push({item:x, from:'bag'});
+    });
+
+    arrV64(state.bagEquip).forEach(function(x){
+      all.push({item:x, from:'bagEquip'});
+    });
+
+    var normal = [];
+    var equip = [];
+
+    all.forEach(function(row){
+      var item = ensureItemShapeV64(row.item);
+      if(!item) return;
+
+      if(isSealedV64(item.name)){
+        normal.push(item);
+        return;
+      }
+
+      if(isRealEquipV64(item)){
+        equip.push(item);
+      }else{
+        normal.push(item);
+      }
+    });
+
+    state.bag = mergeItemListV64(normal);
+    state.bagEquip = mergeItemListV64(equip);
+
+    /* 旧存档中的鞋子若还占 legs，且 feet 为空，则安全迁移到 feet */
+    if(!state.equip.feet && state.equip.legs){
+      var oldLeg = {
+        name:state.equip.legs
+      };
+
+      if(slotFromNameV64(oldLeg.name) === 'feet'){
+        state.equip.feet = state.equip.legs;
+        state.equip.legs = null;
+      }
+    }
+
+    /* 所有已穿装备补入本地元数据 */
+    Object.keys(state.equip).forEach(function(slot){
+      var n = state.equip[slot];
+      if(n){
+        rememberItemMetaV64({
+          name:n,
+          slot:slot
+        },slot);
+      }
+    });
+  }
+
+
+  /* ============================================================
+     三、替换 V8 那个“按名字乱判装备”的分类器
+     
+     只改变装备分类，不删除原来的 V8 系统。
+     ============================================================ */
+
+  try{
+    window.isEquipItem_v8 = function(item){
+      return !!(item && item.name && isRealEquipV64(item));
+    };
+  }catch(e){}
+
+
+  /* ============================================================
+     四、玩家装备弹窗
+     ============================================================ */
+
+  function statHtmlV64(meta){
+    meta = meta || {};
+
+    var h = '';
+
+    if(numV64(meta.hp,0)){
+      h += '<div class="row"><span>体能加持</span><span class="v good">+' +
+        numV64(meta.hp,0) + '</span></div>';
+    }
+
+    if(numV64(meta.mp,0)){
+      h += '<div class="row"><span>灵性共鸣</span><span class="v" style="color:var(--cosmic-blue)">+' +
+        numV64(meta.mp,0) + '</span></div>';
+    }
+
+    if(numV64(meta.sp,0)){
+      h += '<div class="row"><span>精神意志</span><span class="v" style="color:var(--cosmic-purple)">+' +
+        numV64(meta.sp,0) + '</span></div>';
+    }
+
+    if(numV64(meta.san,0)){
+      h += '<div class="row"><span>理智稳定</span><span class="v gold">+' +
+        numV64(meta.san,0) + '</span></div>';
+    }
+
+    return h;
+  }
+
+  function slotNameV64(slot){
+    var map = {
+      head:'头部',
+      body:'身体',
+      legs:'腿部',
+      feet:'足部',
+      weapon:'武器',
+      accessory:'饰品'
+    };
+
+    return map[slot] || '装备';
+  }
+
+  function renderV64ItemModal(item, idx, type){
+    ensureV64();
+
+    item = ensureItemShapeV64(item);
+    if(!item) return;
+
+    curItem = {
+      item:item,
+      idx:idx,
+      type:type || 'bag'
+    };
+
+    var meta = rememberItemMetaV64(item) || {};
+    var slot = getItemSlotV64(item);
+    var equipable = isRealEquipV64(item);
+
+    var isNpc = type === 'npc_readonly';
+
+    if(isNpc){
+      /* NPC物品绝对不读取玩家 ESTATS */
+      var npcDesc =
+        item.description ||
+        item.desc ||
+        meta.description ||
+        meta.desc ||
+        '该人物携带的物品目前只根据已观察到的信息记录，具体用途尚未确认。';
+
+      $('itemTitle').innerHTML =
+        '物品鉴识 <span id="closeItemBtnInner">×</span>';
+
+      $('itemDetail').innerHTML =
+        '<div style="font-size:40px;margin-bottom:8px;text-align:center">🔍</div>' +
+        '<div style="font-size:15px;color:var(--bronze-dark);font-weight:700;text-align:center">' +
+        escV64(item.name) +
+        '</div>' +
+        '<div style="font-size:11px;color:var(--tx-dim);text-align:center;margin-bottom:12px">' +
+        'NPC随身物 · 数量 ' + (item.qty || 1) +
+        '</div>' +
+        '<div style="background:#f5efe2;padding:10px;border-radius:6px;font-size:12px;line-height:1.7">' +
+        escV64(npcDesc) +
+        '</div>' +
+        (slot ?
+          '<div style="margin-top:8px;background:#efe8d7;padding:9px;border-radius:6px;font-size:11px">' +
+          '观察到的类别：' + escV64(slotNameV64(slot)) +
+          '</div>' : '') +
+        (statHtmlV64(meta) ?
+          '<div style="margin-top:8px;background:#efe8d7;padding:9px;border-radius:6px;font-size:11px">' +
+          statHtmlV64(meta) +
+          '</div>' : '');
+
+      $('itemDiscardBtn').style.display = 'none';
+      $('itemActionBtn').style.display = 'none';
+
+      $('itemModal').classList.add('show');
+
+      var closeNpc = document.getElementById('closeItemBtnInner');
+      if(closeNpc) closeNpc.onclick = closeItemModal;
+
+      return;
+    }
+
+    if(!equipable){
+      return false;
+    }
+
+    $('itemTitle').innerHTML =
+      '装备鉴识 <span id="closeItemBtnInner">×</span>';
+
+    var desc =
+      item.description ||
+      item.desc ||
+      meta.description ||
+      meta.desc ||
+      '这件装备的具体非凡属性尚未完全确认。';
+
+    $('itemDetail').innerHTML =
+      '<div style="font-size:40px;margin-bottom:8px;text-align:center">🛡️</div>' +
+      '<div style="font-size:15px;color:var(--bronze-dark);font-weight:700;text-align:center">' +
+      escV64(item.name) +
+      '</div>' +
+      '<div style="font-size:11px;color:var(--tx-dim);text-align:center;margin-bottom:12px">' +
+      '可着装装备 · ' + escV64(slotNameV64(slot)) +
+      ' · 数量 ' + (item.qty || 1) +
+      '</div>' +
+      '<div style="background:#f5efe2;padding:10px;border-radius:6px;font-size:12px;line-height:1.7;margin-bottom:10px">' +
+      escV64(desc) +
+      '</div>' +
+      (statHtmlV64(meta) ?
+        '<div style="background:#efe8d7;padding:10px;border-radius:6px;font-size:11px">' +
+        statHtmlV64(meta) +
+        '</div>' : '');
+
+    $('itemDiscardBtn').style.display = 'inline-flex';
+    $('itemActionBtn').style.display = 'inline-flex';
+
+    $('itemDiscardBtn').textContent = '丢弃';
+    $('itemDiscardBtn').onclick = discardCurrentV64;
+
+    $('itemActionBtn').textContent = '佩戴至身上';
+    $('itemActionBtn').onclick = equipCurrentV64;
+
+    $('itemModal').classList.add('show');
+
+    var closeEquip = document.getElementById('closeItemBtnInner');
+    if(closeEquip) closeEquip.onclick = closeItemModal;
+
+    return true;
+  }
+
+  function equipCurrentV64(){
+    try{
+      if(!curItem || !curItem.item) return;
+
+      var item = ensureItemShapeV64(curItem.item);
+      if(!item) return;
+
+      var slot = getItemSlotV64(item);
+
+      if(!slot){
+        toastV64('该物品没有确定的装备部位。');
+        return;
+      }
+
+      if(state.equip[slot]){
+        toastV64('【' + slotNameV64(slot) + '】已经有装备，请先卸下原装备。');
+        return;
+      }
+
+      var meta = rememberItemMetaV64(item,slot) || {};
+
+      /* 从来源背包移除一件，而不是一次清空整堆 */
+      if(curItem.type === 'bag' && Array.isArray(state.bag)){
+        var b = state.bag[curItem.idx];
+
+        if(b && b.name === item.name){
+          b.qty = (b.qty || 1) - 1;
+          if(b.qty <= 0) state.bag.splice(curItem.idx,1);
+        }
+      }else if(curItem.type === 'bagEquip' && Array.isArray(state.bagEquip)){
+        var be = state.bagEquip[curItem.idx];
+
+        if(be && be.name === item.name){
+          be.qty = (be.qty || 1) - 1;
+          if(be.qty <= 0) state.bagEquip.splice(curItem.idx,1);
+        }
+      }else if(curItem.type === 'sealed' && Array.isArray(state.sealed)){
+        state.sealed.splice(curItem.idx,1);
+      }
+
+      state.equip[slot] = item.name;
+
+      state._v64ItemMeta[item.name] = meta;
+
+      if(numV64(meta.hp,0)) state.maxHp += numV64(meta.hp,0);
+      if(numV64(meta.mp,0)) state.maxMp += numV64(meta.mp,0);
+      if(numV64(meta.sp,0)) state.maxSp += numV64(meta.sp,0);
+      if(numV64(meta.san,0)) state.maxSanity += numV64(meta.san,0);
+
+      state.hp = Math.min(state.hp,state.maxHp);
+      state.mp = Math.min(state.mp,state.maxMp);
+      state.sp = Math.min(state.sp,state.maxSp);
+      state.sanity = Math.min(state.sanity,state.maxSanity);
+
+      closeItemModal();
+
+      try{
+        if(typeof renderEquip === 'function') renderEquip();
+        if(typeof renderBag === 'function') renderBag();
+        if(typeof renderUI === 'function') renderUI();
+      }catch(e){}
+
+      toastV64('已成功装备【' + item.name + '】。');
+
+    }catch(e){
+      console.warn('[V64] 装备失败',e);
+      toastV64('装备操作失败，原状态未被强制改写。');
+    }
+  }
+
+  function discardCurrentV64(){
+    try{
+      if(!curItem || !curItem.item) return;
+
+      var item = curItem.item;
+
+      if(!confirm('确定丢弃【' + item.name + '】？')) return;
+
+      var list = null;
+
+      if(curItem.type === 'bag') list = state.bag;
+      else if(curItem.type === 'bagEquip') list = state.bagEquip;
+
+      if(Array.isArray(list)){
+        var x = list[curItem.idx];
+
+        if(x){
+          x.qty = (x.qty || 1) - 1;
+          if(x.qty <= 0) list.splice(curItem.idx,1);
+        }
+      }
+
+      closeItemModal();
+
+      try{
+        if(typeof renderBag === 'function') renderBag();
+      }catch(e){}
+
+      toastV64('已弃置【' + item.name + '】');
+
+    }catch(e){}
+  }
+
+  function openEquipDetailV64(name,slot){
+    ensureV64();
+
+    var meta = baseMetaV64(name);
+    meta.slot = slot || meta.slot;
+
+    $('itemTitle').innerHTML =
+      '构装鉴识 <span id="closeItemBtnInner">×</span>';
+
+    $('itemDetail').innerHTML =
+      '<div style="font-size:40px;text-align:center;margin-bottom:8px">🛡️</div>' +
+      '<div style="font-size:15px;color:var(--bronze-dark);font-weight:700;text-align:center">' +
+      escV64(name) +
+      '</div>' +
+      '<div style="font-size:11px;color:var(--tx-dim);text-align:center;margin-bottom:12px">' +
+      '当前着装部位：' + escV64(slotNameV64(slot)) +
+      '</div>' +
+      '<div style="background:#f5efe2;padding:10px;border-radius:6px;font-size:12px;line-height:1.7;margin-bottom:10px">' +
+      escV64(meta.description || meta.desc || '当前装备的详细资料尚未完全确认。') +
+      '</div>' +
+      (statHtmlV64(meta) ?
+        '<div style="background:#efe8d7;padding:10px;border-radius:6px;font-size:11px">' +
+        statHtmlV64(meta) +
+        '</div>' : '');
+
+    curItem = {
+      item:{name:name},
+      zone:slot,
+      type:'equip'
+    };
+
+    $('itemDiscardBtn').style.display = 'none';
+    $('itemActionBtn').style.display = 'inline-flex';
+    $('itemActionBtn').textContent = '卸下脱除';
+    $('itemActionBtn').onclick = unequipCurrentV64;
+
+    $('itemModal').classList.add('show');
+
+    var closeBtn = document.getElementById('closeItemBtnInner');
+    if(closeBtn) closeBtn.onclick = closeItemModal;
+  }
+
+  function unequipCurrentV64(){
+    try{
+      if(!curItem || curItem.type !== 'equip') return;
+
+      var slot = curItem.zone;
+      var name = curItem.item && curItem.item.name;
+
+      if(!name || !slot) return;
+
+      var meta = baseMetaV64(name);
+
+      state.equip[slot] = null;
+
+      state.maxHp = Math.max(1,state.maxHp - numV64(meta.hp,0));
+      state.maxMp = Math.max(0,state.maxMp - numV64(meta.mp,0));
+      state.maxSp = Math.max(1,state.maxSp - numV64(meta.sp,0));
+      state.maxSanity = Math.max(1,state.maxSanity - numV64(meta.san,0));
+
+      state.hp = Math.min(state.hp,state.maxHp);
+      state.mp = Math.min(state.mp,state.maxMp);
+      state.sp = Math.min(state.sp,state.maxSp);
+      state.sanity = Math.min(state.sanity,state.maxSanity);
+
+      if(isSealedV64(name)){
+        state.sealed.push({
+          name:name,
+          qty:1,
+          description:meta.description || meta.desc || ''
+        });
+      }else{
+        var target = state.bagEquip;
+        var found = null;
+
+        for(var i=0;i<target.length;i++){
+          if(target[i].name === name){
+            found = target[i];
+            break;
+          }
+        }
+
+        if(found){
+          found.qty = (found.qty || 1) + 1;
+        }else{
+          var item = {
+            name:name,
+            qty:1,
+            slot:slot
+          };
+
+          if(meta.description) item.description = meta.description;
+          if(meta.desc) item.desc = meta.desc;
+          if(meta.type) item.type = meta.type;
+
+          ['hp','mp','sp','san','combatPower'].forEach(function(k){
+            if(meta[k] !== undefined && meta[k] !== null){
+              item[k] = meta[k];
+            }
+          });
+
+          target.push(item);
+        }
+      }
+
+      closeItemModal();
+
+      try{
+        if(typeof renderEquip === 'function') renderEquip();
+        if(typeof renderBag === 'function') renderBag();
+        if(typeof renderUI === 'function') renderUI();
+      }catch(e){}
+
+      toastV64('已卸下【' + name + '】并收入行囊。');
+
+    }catch(e){
+      console.warn('[V64] 卸下失败',e);
+    }
+  }
+
+  /* Hook 物品查看 */
+  if(typeof window.openItemDetail === 'function' && !window.openItemDetail.__v64ItemHook){
+    var oldOpenItemV64 = window.openItemDetail;
+
+    window.openItemDetail = function(item,idx,type){
+      try{
+        var shouldHandle =
+          type === 'npc_readonly' ||
+          type === 'bagEquip' ||
+          (item && isRealEquipV64(item));
+
+        if(shouldHandle){
+          var result = renderV64ItemModal(item,idx,type);
+          if(result !== false) return result;
+        }
+      }catch(e){
+        console.warn('[V64] 物品弹窗异常',e);
+      }
+
+      return oldOpenItemV64.apply(this,arguments);
+    };
+
+    window.openItemDetail.__v64ItemHook = true;
+  }
+
+  /* Hook 装备 */
+  if(typeof window.equipCur === 'function' && !window.equipCur.__v64EquipHook){
+    var oldEquipV64 = window.equipCur;
+
+    window.equipCur = function(){
+      try{
+        if(typeof curItem !== 'undefined' &&
+           curItem &&
+           curItem.item &&
+           isRealEquipV64(curItem.item)){
+          return equipCurrentV64();
+        }
+      }catch(e){
+        console.warn('[V64] equipCur',e);
+      }
+
+      return oldEquipV64.apply(this,arguments);
+    };
+
+    window.equipCur.__v64EquipHook = true;
+  }
+
+  /* Hook 卸下 */
+  if(typeof window.unequipCur === 'function' && !window.unequipCur.__v64UnequipHook){
+    var oldUnequipV64 = window.unequipCur;
+
+    window.unequipCur = function(){
+      try{
+        if(typeof curItem !== 'undefined' &&
+           curItem &&
+           curItem.type === 'equip'){
+          return unequipCurrentV64();
+        }
+      }catch(e){
+        console.warn('[V64] unequipCur',e);
+      }
+
+      return oldUnequipV64.apply(this,arguments);
+    };
+
+    window.unequipCur.__v64UnequipHook = true;
+  }
+
+  /* Hook 已装备详情 */
+  if(typeof window.openEquipDetail === 'function' && !window.openEquipDetail.__v64EquipDetailHook){
+    var oldOpenEquipV64 = window.openEquipDetail;
+
+    window.openEquipDetail = function(name,slot){
+      try{
+        if(name){
+          openEquipDetailV64(name,slot);
+          return;
+        }
+      }catch(e){
+        console.warn('[V64] openEquipDetail',e);
+      }
+
+      return oldOpenEquipV64.apply(this,arguments);
+    };
+
+    window.openEquipDetail.__v64EquipDetailHook = true;
+  }
+
+
+  /* ============================================================
+     五、装备栏增加“足部”槽位
+     
+     只追加一个原版风格的小槽位，不重做装备栏。
+     ============================================================ */
+
+  if(typeof window.renderEquip === 'function' && !window.renderEquip.__v64FeetHook){
+    var oldRenderEquipV64 = window.renderEquip;
+
+    window.renderEquip = function(){
+      var result = oldRenderEquipV64.apply(this,arguments);
+
+      try{
+        ensureV64();
+
+        var w = document.getElementById('equipZones');
+
+        if(w && !w.querySelector('[data-v64-feet-zone]')){
+          var item = state.equip.feet;
+          var d = document.createElement('div');
+
+          d.className = 'equip-zone' + (item ? ' filled' : '');
+          d.setAttribute('data-v64-feet-zone','1');
+
+          d.innerHTML =
+            '<div class="ez-i">👢</div>' +
+            '<div class="ez-n">鞋靴/足部</div>' +
+            (item ?
+              '<div class="ez-it">' + escV64(item) + '</div>' :
+              '<div class="ez-e">空虚</div>');
+
+          d.onclick = function(){
+            if(item){
+              openEquipDetail(item,'feet');
+            }else{
+              toastV64('鞋靴/足部 槽位当前为空');
+            }
+          };
+
+          w.appendChild(d);
+        }
+      }catch(e){}
+
+      return result;
+    };
+
+    window.renderEquip.__v64FeetHook = true;
+  }
+
+
+  /* ============================================================
+     六、NPC档案
+     
+     不再让 NPC bag 借用玩家装备数据库。
+     NPC 每件物品自己保存 description / slot / type 等信息。
+     ============================================================ */
+
+  function normalizeNpcBagV64(bag){
+    var out = [];
+
+    arrV64(bag).forEach(function(raw){
+      var item = ensureItemShapeV64(raw);
+      if(!item) return;
+
+      /* NPC物品可以记录装备类别，但不影响玩家装备 */
+      if(item.description === undefined && item.desc){
+        item.description = item.desc;
+      }
+
+      var found = null;
+
+      for(var i=0;i<out.length;i++){
+        if(out[i].name === item.name){
+          found = out[i];
+          break;
+        }
+      }
+
+      if(found){
+        found.qty = (found.qty || 1) + (item.qty || 1);
+
+        ['description','desc','slot','type','combatPower'].forEach(function(k){
+          if(item[k] !== undefined && item[k] !== null && item[k] !== ''){
+            found[k] = item[k];
+          }
+        });
+      }else{
+        out.push(item);
+      }
+    });
+
+    return out;
+  }
+
+  function createNpcProfileV64(name){
+    return {
+      name:name || '',
+      gender:'未知',
+      age:'未知',
+      identity:'未知',
+      occupation:'未知',
+      faction:'未知',
+      position:'未知',
+      relationToPlayer:'陌生人',
+      location:'未知',
+      path:'凡俗',
+      seq:'凡人',
+      appearance:'未知',
+      personality:'未知',
+      status:'未知',
+      action:'未知',
+      thought:'未知',
+      hp:100,
+      maxHp:100,
+      mp:10,
+      maxMp:10,
+      sp:100,
+      maxSp:100,
+      bag:[]
+    };
+  }
+
+  function mergeNpcProfileV64(name,data){
+    if(!name) return null;
+
+    if(!state.relations[name]){
+      state.relations[name] = createNpcProfileV64(name);
+    }
+
+    var r = state.relations[name];
+
+    if(!r.bag || !Array.isArray(r.bag)){
+      r.bag = [];
+    }
+
+    if(data && typeof data === 'object'){
+      Object.keys(data).forEach(function(k){
+        if(k === 'name' || k === 'bag') return;
+
+        if(data[k] !== undefined &&
+           data[k] !== null &&
+           data[k] !== ''){
+          r[k] = data[k];
+        }
+      });
+
+      if(data.bag !== undefined && Array.isArray(data.bag)){
+        r.bag = normalizeNpcBagV64(data.bag);
+      }
+    }
+
+    r.bag = normalizeNpcBagV64(r.bag);
+
+    /* 保证这些关键字段永远存在 */
+    var defaults = createNpcProfileV64(name);
+
+    ['gender','age','identity','occupation','faction','position',
+     'relationToPlayer','location','path','seq','appearance',
+     'personality','status','action','thought'].forEach(function(k){
+      if(r[k] === undefined || r[k] === null || r[k] === ''){
+        r[k] = defaults[k];
+      }
+    });
+
+    return r;
+  }
+
+  function snapshotNpcBagsV64(){
+    var out = {};
+
+    Object.keys(state.relations || {}).forEach(function(name){
+      var r = state.relations[name];
+
+      out[name] = {
+        bag:cloneV64(r && r.bag) || [],
+        hasBag:!!(r && Object.prototype.hasOwnProperty.call(r,'bag'))
+      };
+    });
+
+    return out;
+  }
+
+  function npcUpdateHasBagV64(data,name){
+    var yes = false;
+
+    arrV64(data && data.npcUpdates).forEach(function(x){
+      if(x && x.name === name && Array.isArray(x.bag)) yes = true;
+    });
+
+    var profiles = data && data.npcProfiles;
+
+    if(Array.isArray(profiles)){
+      profiles.forEach(function(x){
+        if(x && x.name === name && Array.isArray(x.bag)) yes = true;
+      });
+    }else if(profiles && typeof profiles === 'object'){
+      if(profiles[name] && Array.isArray(profiles[name].bag)) yes = true;
+    }
+
+    arrV64(data && data.npcItemUpdates).forEach(function(x){
+      if(x && (x.npc === name || x.name === name)) yes = true;
+    });
+
+    return yes;
+  }
+
+  function mergeNpcItemV64(r,itemUpdate){
+    if(!r || !itemUpdate) return;
+
+    var item = itemUpdate.item || itemUpdate;
+    item = ensureItemShapeV64(item);
+
+    if(!item || !item.name) return;
+
+    var action = String(itemUpdate.action || 'update').toLowerCase();
+    var qty = Math.max(1,numV64(itemUpdate.qty !== undefined ? itemUpdate.qty : item.qty,1));
+
+    if(action === 'remove' || action === 'delete'){
+      r.bag = arrV64(r.bag).map(function(x){
+        return x;
+      });
+
+      var target = null;
+
+      for(var i=0;i<r.bag.length;i++){
+        if(r.bag[i].name === item.name){
+          target = r.bag[i];
+          break;
+        }
+      }
+
+      if(target){
+        target.qty = (target.qty || 1) - qty;
+        if(target.qty <= 0){
+          r.bag = r.bag.filter(function(x){
+            return x.name !== item.name;
+          });
+        }
+      }
+
+      return;
+    }
+
+    if(action === 'set'){
+      var replaced = false;
+
+      r.bag.forEach(function(x){
+        if(x.name === item.name){
+          x.qty = qty;
+          replaced = true;
+
+          ['description','desc','slot','type','combatPower'].forEach(function(k){
+            if(item[k] !== undefined) x[k] = item[k];
+          });
+        }
+      });
+
+      if(!replaced) r.bag.push(item);
+      return;
+    }
+
+    var found = null;
+
+    for(var j=0;j<r.bag.length;j++){
+      if(r.bag[j].name === item.name){
+        found = r.bag[j];
+        break;
+      }
+    }
+
+    if(found){
+      if(action === 'add'){
+        found.qty = (found.qty || 1) + qty;
+      }
+
+      ['description','desc','slot','type','combatPower'].forEach(function(k){
+        if(item[k] !== undefined) found[k] = item[k];
+      });
+    }else{
+      if(action === 'add' || action === 'update'){
+        r.bag.push(item);
+      }
+    }
+
+    r.bag = normalizeNpcBagV64(r.bag);
+  }
+
+  function reconcileNpcV64(data,beforeBags){
+    ensureV64();
+
+    Object.keys(state.relations || {}).forEach(function(name){
+      var r = state.relations[name];
+
+      if(!r || typeof r !== 'object') return;
+
+      r.bag = normalizeNpcBagV64(r.bag);
+
+      var hadBefore =
+        beforeBags &&
+        beforeBags[name] &&
+        Array.isArray(beforeBags[name].bag) &&
+        beforeBags[name].bag.length;
+
+      /*
+       * 如果原 NPC 原本有物品，而这一轮 AI 没有任何 bag 指令，
+       * 却因为旧 applyAI 的整体覆盖机制把 bag 变成空数组，
+       * 自动恢复上一轮物品，避免 NPC 档案凭空丢失。
+       */
+      if(
+        hadBefore &&
+        r.bag.length === 0 &&
+        !npcUpdateHasBagV64(data,name)
+      ){
+        r.bag = normalizeNpcBagV64(beforeBags[name].bag);
+      }
+    });
+
+    /* 顶层完整 NPC 档案 */
+    if(Array.isArray(data && data.npcProfiles)){
+      data.npcProfiles.forEach(function(x){
+        if(x && x.name) mergeNpcProfileV64(x.name,x);
+      });
+    }else if(data && data.npcProfiles && typeof data.npcProfiles === 'object'){
+      Object.keys(data.npcProfiles).forEach(function(name){
+        mergeNpcProfileV64(name,data.npcProfiles[name]);
+      });
+    }
+
+    /* 普通 npcUpdates */
+    arrV64(data && data.npcUpdates).forEach(function(x){
+      if(x && x.name) mergeNpcProfileV64(x.name,x);
+    });
+
+    /*
+     * 精确物品变化：
+     * add / remove / update / set
+     */
+    arrV64(data && data.npcItemUpdates).forEach(function(x){
+      var name = x && (x.npc || x.name);
+
+      if(!name) return;
+
+      var r = mergeNpcProfileV64(name,{});
+      mergeNpcItemV64(r,x);
+    });
+
+    /* 最终统一规范 */
+    Object.keys(state.relations || {}).forEach(function(name){
+      var r = state.relations[name];
+
+      if(!r || typeof r !== 'object') return;
+
+      r.bag = normalizeNpcBagV64(r.bag);
+
+      if(!r.lastSeen){
+        r.lastSeen = state.time || '';
+      }
+    });
+  }
+
+
+  /* ============================================================
+     七、长期记忆核心
+     
+     原 V47 / 当前 memory 系统继续保留。
+     V64 只在它旁边增加“硬事实账本 + 回合摘要”。
+     ============================================================ */
+
+  function factKeyV64(entity,key){
+    return String(entity || '世界') + '::' + String(key || '事实');
+  }
+
+  function saveFactV64(entity,key,value,source,important){
+    if(!entity || key === undefined || key === null) return;
+    if(value === undefined || value === null || value === '') return;
+
+    var k = factKeyV64(entity,key);
+
+    state._v64Facts[k] = {
+      entity:String(entity),
+      key:String(key),
+      value:value,
+      source:source || '游戏状态',
+      time:state.time || '',
+      important:!!important
+    };
+  }
+
+  function collectStateFactsV64(){
+    var playerName =
+      state.meta && state.meta.playerName ?
+      state.meta.playerName : '玩家';
+
+    saveFactV64(
+      '玩家',
+      '姓名',
+      playerName,
+      '玩家档案',
+      true
+    );
+
+    saveFactV64(
+      '玩家',
+      '性别',
+      state.meta && state.meta.gender,
+      '玩家档案',
+      true
+    );
+
+    saveFactV64(
+      '玩家',
+      '年龄',
+      state.meta && state.meta.age,
+      '玩家档案',
+      true
+    );
+
+    saveFactV64(
+      '玩家',
+      '身份',
+      state.identity,
+      '玩家状态',
+      true
+    );
+
+    saveFactV64(
+      '玩家',
+      '途径',
+      state.path,
+      '玩家状态',
+      true
+    );
+
+    saveFactV64(
+      '玩家',
+      '序列',
+      state.seq,
+      '玩家状态',
+      true
+    );
+
+    saveFactV64(
+      '玩家',
+      '当前位置',
+      state.location,
+      '玩家状态',
+      true
+    );
+
+    saveFactV64(
+      '世界',
+      '当前时间',
+      state.time,
+      '世界状态',
+      true
+    );
+
+    saveFactV64(
+      '世界',
+      '天气',
+      state.weather,
+      '世界状态',
+      false
+    );
+
+    Object.keys(state.relations || {}).forEach(function(name){
+      var r = state.relations[name];
+      if(!r) return;
+
+      saveFactV64(name,'身份',r.identity,'NPC档案',true);
+      saveFactV64(name,'年龄',r.age,'NPC档案',false);
+      saveFactV64(name,'性别',r.gender,'NPC档案',false);
+      saveFactV64(name,'势力',r.faction,'NPC档案',true);
+      saveFactV64(name,'职位',r.position || r.occupation,'NPC档案',true);
+      saveFactV64(name,'地点',r.location,'NPC档案',true);
+      saveFactV64(name,'途径',r.path,'NPC档案',true);
+      saveFactV64(name,'序列',r.seq,'NPC档案',true);
+      saveFactV64(name,'外貌',r.appearance,'NPC档案',false);
+      saveFactV64(name,'性格',r.personality,'NPC档案',false);
+      saveFactV64(name,'关系',r.relationToPlayer,'NPC档案',true);
+    });
+
+    Object.keys(state._v64Facts).forEach(function(k){
+      if(!state._v64Facts[k]) delete state._v64Facts[k];
+    });
+
+    var keys = Object.keys(state._v64Facts);
+
+    /* 硬事实最多保留 300 条 */
+    if(keys.length > 300){
+      keys.sort(function(a,b){
+        var A = state._v64Facts[a];
+        var B = state._v64Facts[b];
+
+        if(!!A.important !== !!B.important){
+          return A.important ? -1 : 1;
+        }
+
+        return String(B.time || '').localeCompare(String(A.time || ''));
+      });
+
+      state._v64Facts = (function(){
+        var o = {};
+
+        keys.slice(0,300).forEach(function(k){
+          o[k] = state._v64Facts[k];
+        });
+
+        return o;
+      })();
+    }
+  }
+
+  function rememberTurnV64(data,action,narrative){
+    ensureV64();
+
+    collectStateFactsV64();
+
+    var itemNames = [];
+    var npcNames = [];
+
+    arrV64(data && data.npcUpdates).forEach(function(x){
+      if(x && x.name && npcNames.indexOf(x.name) < 0){
+        npcNames.push(x.name);
+      }
+    });
+
+    arrV64(data && data.npcProfiles).forEach(function(x){
+      if(x && x.name && npcNames.indexOf(x.name) < 0){
+        npcNames.push(x.name);
+      }
+    });
+
+    arrV64(data && data.npcItemUpdates).forEach(function(x){
+      var n = x && (x.itemName || (x.item && x.item.name));
+      if(n && itemNames.indexOf(n) < 0) itemNames.push(n);
+    });
+
+    if(data && data.stateChanges){
+      arrV64(data.stateChanges.addBag).forEach(function(x){
+        if(x && x.name && itemNames.indexOf(x.name) < 0){
+          itemNames.push(x.name);
+        }
+      });
+
+      arrV64(data.stateChanges.removeBag).forEach(function(x){
+        if(x && x.name && itemNames.indexOf(x.name) < 0){
+          itemNames.push(x.name);
+        }
+      });
+    }
+
+    arrV64(data && data.itemUpdates).forEach(function(x){
+      var n = x && (x.itemName || (x.item && x.item.name) || x.name);
+      if(n && itemNames.indexOf(n) < 0) itemNames.push(n);
+    });
+
+    var turn = {
+      id:'v64-' + Date.now() + '-' + Math.floor(Math.random()*100000),
+      time:state.time || '',
+      location:state.location || '',
+      action:String(action || ''),
+      narrative:String(narrative || '').slice(0,1200),
+      npcs:npcNames.slice(0,20),
+      items:itemNames.slice(0,30),
+      player:{
+        path:state.path || '',
+        seq:state.seq || '',
+        identity:state.identity || '',
+        hp:state.hp,
+        mp:state.mp,
+        sp:state.sp,
+        sanity:state.sanity
+      }
+    };
+
+    state._v64Memory.turns.push(turn);
+
+    if(
+      data &&
+      data.memoryEntry &&
+      (
+        numV64(data.memoryEntry.importance,0) >= 4 ||
+        arrV64(data.memoryEntry.events).length >= 2
+      )
+    ){
+      state._v64Memory.important.push({
+        time:state.time || '',
+        location:state.location || '',
+        rawText:String(
+          data.memoryEntry.rawText ||
+          narrative ||
+          ''
+        ).slice(0,1200),
+        npcs:arrV64(data.memoryEntry.npcs).slice(0,20),
+        items:arrV64(data.memoryEntry.items).slice(0,30),
+        events:arrV64(data.memoryEntry.events).slice(0,10)
+      });
+    }
+
+    if(state._v64Memory.turns.length > 80){
+      state._v64Memory.turns =
+        state._v64Memory.turns.slice(-80);
+    }
+
+    if(state._v64Memory.important.length > 100){
+      state._v64Memory.important =
+        state._v64Memory.important.slice(-100);
+    }
+  }
+
+  function findKeywordsV64(text){
+    var s = String(text || '');
+    var list = [];
+
+    Object.keys(state.relations || {}).forEach(function(n){
+      if(n && s.indexOf(n) >= 0 && list.indexOf(n) < 0){
+        list.push(n);
+      }
+    });
+
+    Object.keys(state._v64ItemMeta || {}).forEach(function(n){
+      if(n && s.indexOf(n) >= 0 && list.indexOf(n) < 0){
+        list.push(n);
+      }
+    });
+
+    return list.slice(0,30);
+  }
+
+  function recallV64(action){
+    var s = String(action || '');
+    var keys = findKeywordsV64(s);
+    var lines = [];
+
+    Object.keys(state._v64Facts || {}).forEach(function(k){
+      var f = state._v64Facts[k];
+      if(!f) return;
+
+      if(
+        f.important ||
+        keys.indexOf(f.entity) >= 0 ||
+        s.indexOf(f.entity) >= 0
+      ){
+        lines.push(
+          '· ' + f.entity + '：' + f.key + ' = ' +
+          String(f.value)
+        );
+      }
+    });
+
+    state._v64Memory.important.slice(-12).forEach(function(m){
+      var hit = false;
+
+      arrV64(m.npcs).forEach(function(n){
+        if(s.indexOf(String(n)) >= 0) hit = true;
+      });
+
+      arrV64(m.items).forEach(function(n){
+        if(s.indexOf(String(n)) >= 0) hit = true;
+      });
+
+      if(hit || lines.length < 15){
+        lines.push(
+          '· 重要回忆：' +
+          (m.time || '') +
+          ' / ' +
+          (m.location || '') +
+          ' / ' +
+          (m.rawText || '')
+        );
+      }
+    });
+
+    state._v64Memory.turns.slice(-8).forEach(function(t){
+      lines.push(
+        '· 最近回合：' +
+        (t.time || '') +
+        ' / ' +
+        (t.location || '') +
+        ' / ' +
+        (t.narrative || '').slice(0,260)
+      );
+    });
+
+    return lines.slice(0,35).join('\n');
+  }
+
+
+  /* ============================================================
+     八、物品状态双向同步
+     ============================================================ */
+
+  function addPlayerItemV64(item){
+    item = ensureItemShapeV64(item);
+    if(!item) return;
+
+    var slot = getItemSlotV64(item);
+
+    if(slot){
+      rememberItemMetaV64(item,slot);
+
+      var eq = state.bagEquip;
+      var foundEq = null;
+
+      eq.forEach(function(x){
+        if(x.name === item.name) foundEq = x;
+      });
+
+      if(foundEq){
+        foundEq.qty = (foundEq.qty || 1) + (item.qty || 1);
+      }else{
+        eq.push(item);
+      }
+
+      return;
+    }
+
+    var normal = state.bag;
+    var found = null;
+
+    normal.forEach(function(x){
+      if(x.name === item.name) found = x;
+    });
+
+    if(found){
+      found.qty = (found.qty || 1) + (item.qty || 1);
+
+      ['description','desc','type'].forEach(function(k){
+        if(item[k] !== undefined) found[k] = item[k];
+      });
+    }else{
+      normal.push(item);
+    }
+  }
+
+  function removePlayerItemV64(name,qty){
+    qty = Math.max(1,numV64(qty,1));
+
+    var lists = [state.bag,state.bagEquip];
+
+    for(var li=0;li<lists.length;li++){
+      var list = lists[li];
+
+      for(var i=0;i<list.length;i++){
+        if(list[i] && list[i].name === name){
+          list[i].qty = (list[i].qty || 1) - qty;
+
+          if(list[i].qty <= 0){
+            list.splice(i,1);
+          }
+
+          return true;
+        }
+      }
+    }
+
+    return false;
+  }
+
+  function updatePlayerItemMetaV64(data){
+    arrV64(data && data.itemUpdates).forEach(function(x){
+      if(!x) return;
+
+      var action = String(x.action || 'update').toLowerCase();
+      var item = x.item || x;
+
+      if(!item || !item.name) return;
+
+      var name = item.name;
+      var existing = null;
+
+      [state.bag,state.bagEquip].some(function(list){
+        return list.some(function(it){
+          if(it && it.name === name){
+            existing = it;
+            return true;
+          }
+          return false;
+        });
+      });
+
+      if(
+        action === 'add' &&
+        !(data.stateChanges &&
+          arrV64(data.stateChanges.addBag).some(function(y){
+            return y && y.name === name;
+          }))
+      ){
+        addPlayerItemV64(item);
+        return;
+      }
+
+      if(
+        action === 'remove' ||
+        action === 'delete'
+      ){
+        if(
+          !(data.stateChanges &&
+            arrV64(data.stateChanges.removeBag).some(function(y){
+              return y && y.name === name;
+            }))
+        ){
+          removePlayerItemV64(name,x.qty || item.qty || 1);
+        }
+        return;
+      }
+
+      if(existing){
+        ['description','desc','slot','equipSlot','type','combatPower',
+         'hp','mp','sp','san','equipable'].forEach(function(k){
+          if(item[k] !== undefined && item[k] !== null){
+            existing[k] = item[k];
+          }
+        });
+
+        if(item.bonuses){
+          existing.bonuses = cloneV64(item.bonuses) || {};
+        }
+
+        rememberItemMetaV64(existing);
+      }else{
+        rememberItemMetaV64(item);
+      }
+
+      if(action === 'equip'){
+        var slot = getItemSlotV64(item);
+
+        if(slot && !state.equip[slot]){
+          var temp = {
+            item:item,
+            idx:-1,
+            type:'bag'
+          };
+
+          curItem = temp;
+          equipCurrentV64();
+        }
+      }
+
+      if(action === 'unequip'){
+        var targetSlot = null;
+
+        Object.keys(state.equip).forEach(function(k){
+          if(state.equip[k] === name){
+            targetSlot = k;
+          }
+        });
+
+        if(targetSlot){
+          curItem = {
+            item:{name:name},
+            zone:targetSlot,
+            type:'equip'
+          };
+
+          unequipCurrentV64();
+        }
+      }
+    });
+
+    normalizePlayerInventoryV64();
+  }
+
+
+  /* ============================================================
+     九、NPC物品 + 玩家物品 + AI状态变化共同整理
+     ============================================================ */
+
+  function processFactsFromAI_V64(data){
+    if(!data) return;
+
+    arrV64(data.facts).forEach(function(f){
+      if(!f) return;
+
+      var entity = f.entity || f.name || '世界';
+      var key = f.key || f.field || '事实';
+      var value = f.value;
+
+      saveFactV64(
+        entity,
+        key,
+        value,
+        f.source || 'AI结构化事实',
+        !!f.important
+      );
+    });
+
+    if(data.memoryEntry){
+      var me = data.memoryEntry;
+
+      arrV64(me.npcs).forEach(function(n){
+        if(typeof n === 'string'){
+          saveFactV64(
+            n,
+            '曾出现在重要记忆中',
+            true,
+            '长期记忆',
+            false
+          );
+        }
+      });
+
+      arrV64(me.items).forEach(function(n){
+        if(typeof n === 'string'){
+          saveFactV64(
+            n,
+            '曾出现在重要记忆中',
+            true,
+            '长期记忆',
+            false
+          );
+        }
+      });
+    }
+  }
+
+
+  /* ============================================================
+     十、战斗安全同步
+     
+     不删除原 V60 战斗系统。
+     只做：
+     - 数值钳制
+     - 当前装备/能力/序列进入战斗提示
+     - 保存战斗快照
+     ============================================================ */
+
+  function seqPowerV64(seq){
+    var s = String(seq || '');
+
+    if(/旧日|真神|序列0/.test(s)) return 100;
+    if(/天使之王|序列1/.test(s)) return 90;
+    if(/序列2/.test(s)) return 78;
+    if(/序列3/.test(s)) return 68;
+    if(/序列4|半神|圣者/.test(s)) return 58;
+    if(/序列5/.test(s)) return 48;
+    if(/序列6/.test(s)) return 38;
+    if(/序列7/.test(s)) return 30;
+    if(/序列8/.test(s)) return 22;
+    if(/序列9/.test(s)) return 15;
+
+    return 5;
+  }
+
+  function playerBattlePowerV64(){
+    var score = seqPowerV64(state.seq);
+
+    score += arrV64(state.abilities).length * 3;
+
+    Object.keys(state.equip || {}).forEach(function(slot){
+      var name = state.equip[slot];
+
+      if(name){
+        var meta = baseMetaV64(name);
+
+        score += numV64(
+          meta.combatPower,
+          2
+        );
+      }
+    });
+
+    return Math.round(score);
+  }
+
+  function normalizeCombatV64(){
+    try{
+      var c = state._v60Combat;
+
+      if(!c || typeof c !== 'object') return;
+
+      c.enemyHp = Math.max(
+        0,
+        numV64(c.enemyHp,0)
+      );
+
+      if(c.enemyMaxHp !== undefined &&
+         c.enemyMaxHp !== null &&
+         c.enemyMaxHp !== ''){
+        c.enemyMaxHp = Math.max(
+          1,
+          numV64(c.enemyMaxHp,1)
+        );
+
+        c.enemyHp = Math.min(
+          c.enemyHp,
+          c.enemyMaxHp
+        );
+      }
+
+      c.turn = Math.max(
+        0,
+        numV64(c.turn,0)
+      );
+
+      state.hp = Math.max(
+        0,
+        numV64(state.hp,0)
+      );
+
+      state.mp = Math.max(
+        0,
+        numV64(state.mp,0)
+      );
+
+      state.sp = Math.max(
+        0,
+        numV64(state.sp,0)
+      );
+
+      state.sanity = Math.max(
+        0,
+        numV64(state.sanity,0)
+      );
+
+      state.hp = Math.min(
+        state.hp,
+        Math.max(1,numV64(state.maxHp,1))
+      );
+
+      state.mp = Math.min(
+        state.mp,
+        Math.max(0,numV64(state.maxMp,0))
+      );
+
+      state.sp = Math.min(
+        state.sp,
+        Math.max(1,numV64(state.maxSp,1))
+      );
+
+      state.sanity = Math.min(
+        state.sanity,
+        Math.max(1,numV64(state.maxSanity,1))
+      );
+
+    }catch(e){}
+  }
+
+  function combatContextV64(){
+    var c = state._v60Combat;
+
+    if(!c || !c.active){
+      return '【当前战斗】无正式战斗。不要自行生成战斗界面。';
+    }
+
+    return [
+      '【当前战斗】',
+      '敌人：' + (c.enemyName || '未知'),
+      '敌方途径：' + (c.enemyPath || '未知'),
+      '敌方序列：' + (c.enemySeq || '未知'),
+      '敌方HP：' + (c.enemyHp || 0) + '/' + (c.enemyMaxHp || '未知'),
+      '敌方状态：' + (c.enemyStatus || '未知'),
+      '战斗轮次：' + (c.turn || 1),
+      '玩家位阶：' + (state.path || '未知') + ' / ' + (state.seq || '凡俗'),
+      '玩家参考战力：' + playerBattlePowerV64(),
+      '玩家HP：' + state.hp + '/' + state.maxHp,
+      '玩家MP：' + state.mp + '/' + state.maxMp,
+      '玩家SP：' + state.sp + '/' + state.maxSp,
+      '玩家SAN：' + state.sanity + '/' + state.maxSanity,
+      '要求：战斗判断必须考虑位格、途径、能力、装备、情报、距离、地形、准备与实际行动；参考战力只供裁决参考，不能机械替代因果。'
+    ].join('\n');
+  }
+
+
+  /* ============================================================
+     十一、正文所看到的完整状态
+     
+     这部分是“状态 → 正文”。
+     ============================================================ */
+
+  function buildBilateralContextV64(action){
+    normalizePlayerInventoryV64();
+    collectStateFactsV64();
+
+    var playerEquip = [];
+
+    Object.keys(state.equip || {}).forEach(function(slot){
+      var name = state.equip[slot];
+
+      if(name){
+        var meta = baseMetaV64(name);
+
+        playerEquip.push(
+          slotNameV64(slot) +
+          '：' + name +
+          (meta.description || meta.desc ?
+            '（' + (meta.description || meta.desc) + '）' : '')
+        );
+      }
+    });
+
+    var playerBag = [];
+
+    state.bag.forEach(function(it){
+      playerBag.push(
+        it.name + 'x' + (it.qty || 1)
+      );
+    });
+
+    state.bagEquip.forEach(function(it){
+      playerBag.push(
+        '[装备]' + it.name + 'x' + (it.qty || 1)
+      );
+    });
+
+    var sealed = state.sealed.map(function(x){
+      return typeof x === 'string' ? x : x && x.name;
+    }).filter(Boolean);
+
+    var names = Object.keys(state.relations || {});
+    var present = [];
+    var absent = [];
+
+    names.forEach(function(n){
+      var r = state.relations[n];
+      if(!r) return;
+
+      if(
+        r.status === '在场' ||
+        r.location === state.location
+      ){
+        present.push(n);
+      }else{
+        absent.push(n);
+      }
+    });
+
+    var npcLines = [];
+
+    present.concat(
+      absent.slice(0,Math.max(0,24-present.length))
+    ).slice(0,24).forEach(function(n){
+      var r = state.relations[n];
+
+      npcLines.push(
+        '【NPC】' + n +
+        '；性别：' + (r.gender || '未知') +
+        '；年龄：' + (r.age || '未知') +
+        '；身份：' + (r.identity || '未知') +
+        '；势力：' + (r.faction || '未知') +
+        '；职位：' + (r.position || r.occupation || '未知') +
+        '；关系：' + (r.relationToPlayer || '陌生人') +
+        '；地点：' + (r.location || '未知') +
+        '；途径：' + (r.path || '凡俗') +
+        '；序列：' + (r.seq || '凡人') +
+        '；状态：' + (r.status || '未知') +
+        '；外貌：' + (r.appearance || '未知') +
+        '；性格：' + (r.personality || '未知') +
+        '；行动：' + (r.action || '未知') +
+        '；想法：' + (r.thought || '不可知') +
+        '；携带物：' +
+        normalizeNpcBagV64(r.bag).map(function(it){
+          return it.name + 'x' + (it.qty || 1);
+        }).join('、')
+      );
+    });
+
+    return [
+      '【V64·状态→正文双向同步】',
+      '以下内容是当前真实游戏状态，不是建议，不是剧情草稿。正文必须以这些状态为准。',
+      '',
+      '【玩家完整状态】',
+      '姓名：' + ((state.meta && state.meta.playerName) || ''),
+      '性别：' + ((state.meta && state.meta.gender) || ''),
+      '年龄：' + ((state.meta && state.meta.age) || ''),
+      '背景：' + ((state.meta && state.meta.background) || ''),
+      '身份：' + (state.identity || ''),
+      '居所：' + (state.residence || ''),
+      '当前地点：' + (state.location || ''),
+      '时间：' + (state.time || ''),
+      '天气：' + (state.weather || ''),
+      '途径：' + (state.path || ''),
+      '序列：' + (state.seq || ''),
+      '消化度：' + (state.digest || 0) + '%',
+      'HP：' + state.hp + '/' + state.maxHp,
+      'MP：' + state.mp + '/' + state.maxMp,
+      'SP：' + state.sp + '/' + state.maxSp,
+      'SAN：' + state.sanity + '/' + state.maxSanity,
+      '容貌：' + (state.appearanceFace || state.appearance || ''),
+      '身材：' + (state.appearanceBody || ''),
+      '穿着：' + (state.appearanceCloth || ''),
+      '当前神态：' + (state.appearanceExpression || ''),
+      '非凡能力：' + arrV64(state.abilities).map(function(a){
+        return a && a.name ? a.name : String(a);
+      }).join('、'),
+      '当前装备：' + (playerEquip.join('；') || '无'),
+      '背包：' + (playerBag.join('、') || '空'),
+      '封印物：' + (sealed.join('、') || '无'),
+      '',
+      '【NPC档案】',
+      npcLines.join('\n') || '暂无详细人物档案',
+      '',
+      '【长期记忆召回】',
+      recallV64(action) || '暂无相关长期记忆',
+      '',
+      combatContextV64(),
+      '',
+      '【双向同步要求】',
+      '正文中发生会改变玩家/NPC/物品/装备/势力/关系/战斗/记忆的事件时，必须同时输出对应的结构化状态变化。',
+      '前端状态已经发生的事情，正文必须承认，不能把已经获得的物品写成从未获得。',
+      '人物已经知道的事情、已经发生的伤势、已经拥有的物品、当前穿着与当前位置必须保持连续性。'
+    ].join('\n');
+  }
+
+
+  /* ============================================================
+     十二、联网核验
+     
+     只作为辅助证据。
+     网络失败不会阻塞游戏。
+     不改现有 API。
+     ============================================================ */
+
+  async function requestWebJsonV64(url,ms){
+    try{
+      var controller =
+        typeof AbortController !== 'undefined' ?
+        new AbortController() : null;
+
+      var timer = null;
+
+      if(controller){
+        timer = setTimeout(function(){
+          try{ controller.abort(); }catch(e){}
+        },ms || 3000);
+      }
+
+      var response = await fetch(
+        url,
+        controller ? {signal:controller.signal} : {}
+      );
+
+      if(timer) clearTimeout(timer);
+
+      if(!response.ok) return null;
+
+      return await response.json();
+
+    }catch(e){
+      return null;
+    }
+  }
+
+  function stripHtmlV64(s){
+    return String(s || '')
+      .replace(/<[^>]+>/g,' ')
+      .replace(/&quot;/g,'"')
+      .replace(/&#39;/g,"'")
+      .replace(/&amp;/g,'&')
+      .replace(/\s+/g,' ')
+      .trim();
+  }
+
+  async function webVerifyV64(action){
+    try{
+      if(window.__V64_WEB_VERIFY_ENABLED === false){
+        return '';
+      }
+
+      var query =
+        '诡秘之主 ' +
+        (state.time || '') + ' ' +
+        (state.location || '') + ' ' +
+        String(action || '').slice(0,100);
+
+      var ddgUrl =
+        'https://api.duckduckgo.com/?q=' +
+        encodeURIComponent(query) +
+        '&format=json&no_html=1&skip_disambig=1';
+
+      var wikiUrl =
+        'https://zh.wikipedia.org/w/api.php?action=query&list=search&srsearch=' +
+        encodeURIComponent(query) +
+        '&format=json&origin=*&utf8=1&srlimit=3';
+
+      var results = await Promise.all([
+        requestWebJsonV64(ddgUrl,3200),
+        requestWebJsonV64(wikiUrl,3200)
+      ]);
+
+      var ddg = results[0];
+      var wiki = results[1];
+
+      var lines = [];
+
+      if(ddg){
+        if(ddg.AbstractText){
+          lines.push(
+            '网络辅助资料：' +
+            stripHtmlV64(ddg.AbstractText).slice(0,700)
+          );
+        }
+
+        arrV64(ddg.RelatedTopics).slice(0,3).forEach(function(x){
+          if(x && x.Text){
+            lines.push(
+              '相关资料：' +
+              stripHtmlV64(x.Text).slice(0,300)
+            );
+          }
+        });
+      }
+
+      if(
+        wiki &&
+        wiki.query &&
+        Array.isArray(wiki.query.search)
+      ){
+        wiki.query.search.slice(0,3).forEach(function(x){
+          if(x && x.title){
+            lines.push(
+              '百科检索：' +
+              stripHtmlV64(x.title) +
+              '：' +
+              stripHtmlV64(x.snippet || '').slice(0,260)
+            );
+          }
+        });
+      }
+
+      if(!lines.length) return '';
+
+      return [
+        '【V64·联网辅助核验】',
+        '以下内容来自临时网络检索，只能作为辅助证据。',
+        '优先级：世界书/当前已经确认的原著状态 > AI自身知识 > 网络检索结果。',
+        '网络资料互相冲突时，不得为了迎合网络资料直接覆盖已经确认的游戏状态。',
+        lines.slice(0,7).join('\n')
+      ].join('\n');
+
+    }catch(e){
+      return '';
+    }
+  }
+
+
+  /* ============================================================
+     十三、Hook callAPI
+     
+     不重写原 callAPI，只在发送给模型前追加状态与网络资料。
+     ============================================================ */
+
+  if(typeof window.callAPI === 'function' && !window.callAPI.__v64BilateralHook){
+    var oldCallAPIV64 = window.callAPI;
+
+    window.callAPI = async function(msgs,cfgArg){
+      try{
+        var copied = [];
+
+        arrV64(msgs).forEach(function(m){
+          if(!m || typeof m !== 'object'){
+            copied.push(m);
+            return;
+          }
+
+          copied.push({
+            role:m.role,
+            content:m.content
+          });
+        });
+
+        var lastUser = '';
+
+        for(var i=copied.length-1;i>=0;i--){
+          if(copied[i] && copied[i].role === 'user'){
+            lastUser = String(copied[i].content || '');
+            break;
+          }
+        }
+
+        var actionText = lastUser;
+
+        var marker = '【玩家此轮行动】';
+        var pos = lastUser.indexOf(marker);
+
+        if(pos >= 0){
+          actionText = lastUser.slice(
+            pos + marker.length
+          ).slice(0,500);
+        }
+
+        var bilateral = buildBilateralContextV64(actionText);
+
+        var web = '';
+
+        /*
+         * 创生阶段也允许核验，但只搜索一次。
+         * 普通游戏回合每次只做一次短检索。
+         */
+        if(window.__V64_WEB_LAST_ACTION__ !== actionText){
+          window.__V64_WEB_LAST_ACTION__ = actionText;
+          web = await webVerifyV64(actionText);
+          window.__V64_WEB_LAST_RESULT__ = web || '';
+        }else{
+          web = window.__V64_WEB_LAST_RESULT__ || '';
+        }
+
+        var context =
+          '\n\n' +
+          bilateral +
+          '\n\n' +
+          (web || '') +
+          '\n\n【V64·生成顺序】' +
+          '\n第一步：先依据世界书与已经确认的原著设定进行判断。' +
+          '\n第二步：再使用 AI 自身知识检查是否存在遗漏或冲突。' +
+          '\n第三步：最后参考联网检索结果核验容易出错的事实。' +
+          '\n第四步：如果网络资料与游戏已经确认的状态冲突，不得擅自篡改当前状态。' +
+          '\n第五步：最终正文必须与结构化状态完全一致。';
+
+        for(var j=copied.length-1;j>=0;j--){
+          if(copied[j] && copied[j].role === 'user'){
+            copied[j].content =
+              String(copied[j].content || '') +
+              context;
+            break;
+          }
+        }
+
+        return await oldCallAPIV64.call(this,copied,cfgArg);
+
+      }catch(e){
+        /*
+         * 联动层任何异常都不得阻塞原 API。
+         */
+        try{
+          return await oldCallAPIV64.apply(this,arguments);
+        }catch(inner){
+          throw inner;
+        }
+      }
+    };
+
+    window.callAPI.__v64BilateralHook = true;
+  }
+
+
+  /* ============================================================
+     十四、给 GM_SYSTEM 增加严格的结构化同步规则
+     
+     只追加，不 replace。
+     ============================================================ */
+
+  try{
+    if(typeof GM_SYSTEM === 'string' &&
+       GM_SYSTEM.indexOf('【V64·双向状态同步协议】') < 0){
+
+      GM_SYSTEM +=
+        '\n\n【V64·双向状态同步协议】' +
+        '\n1. 正文不是状态的替代品。正文中真实发生的重要变化，必须在结构化字段中同时体现。' +
+        '\n2. 当前状态也不是孤立面板。生成正文时必须主动考虑玩家身份、年龄、性别、外貌、背景、地点、途径、序列、能力、装备、背包、封印物、势力、金钱、伤势与记忆。' +
+        '\n3. 玩家物品变化优先通过 stateChanges.addBag/removeBag 与 itemUpdates 表达。itemUpdates 可包含 action、name、qty、description、slot、type、hp、mp、sp、san、combatPower。' +
+        '\n4. 玩家装备若发生变化，itemUpdates 中应明确 equip 或 unequip，并尽量提供 slot。裙子/连衣裙属于 body；鞋靴属于 feet；帽子属于 head。' +
+        '\n5. NPC必须维护独立档案。npcUpdates 或 npcProfiles 中应尽可能保持 name、gender、age、identity、occupation、faction、position、relationToPlayer、location、path、seq、appearance、personality、status、action、thought、bag。' +
+        '\n6. NPC物品必须作为该NPC自己的物品记录。不要假定 NPC 物品一定存在于玩家物品数据库中。' +
+        '\n7. NPC物品发生获得、丢失、转移或数量变化时，可以使用 npcItemUpdates：{npc,action,item:{name,qty,description,slot,type}}。' +
+        '\n8. 重要长期事实可以使用 facts：[{"entity":"","key":"","value":"","important":true}]。' +
+        '\n9. memoryEntry 必须记录真正会影响以后剧情的关键人物、物品、事件、地点、关系和结果。不要把每一句废话都当成永久记忆。' +
+        '\n10. 战斗必须与玩家当前途径、序列、能力、实际装备、敌人位格、距离、情报、地形和行动保持一致。不要因为普通攻击而无视位格差距。' +
+        '\n11. 战斗状态存在时，优先返回 combat 或 stateChanges.combat，让前端继续使用原有战斗系统。' +
+        '\n12. 网络资料只能辅助核验，不能覆盖世界书和已经确认的游戏状态。' +
+        '\n13. 如果某项事实不知道，就写未知或不确定，禁止为了填满档案而编造。' +
+        '\n14. 不得因为上一轮没有提到某个角色，就清空该角色已经确认的资料。' +
+        '\n15. 不得因为上一轮没有提到某件 NPC 物品，就把该 NPC 的全部背包变成空。' +
+        '\n16. 玩家已经获得、装备、损坏、出售或丢弃的物品必须保持连续性。' +
+        '\n17. 正文、状态、NPC档案、物品、记忆、战斗是互相影响的同一条因果链。';
+    }
+  }catch(e){}
+
+
+  /* ============================================================
+     十五、AI返回之后的统一整理
+     ============================================================ */
+
+  if(typeof window.applyAI === 'function' && !window.applyAI.__v64BilateralHook){
+    var oldApplyAIV64 = window.applyAI;
+
+    window.applyAI = function(data,action){
+      var beforeNpcBags = snapshotNpcBagsV64();
+      var narrative = '';
+
+      try{
+        if(data && data.narrative){
+          narrative = [
+            data.narrative.scene || '',
+            data.narrative.result || '',
+            data.narrative.world || ''
+          ].join('\n\n');
+        }
+      }catch(e){}
+
+      var result;
+
+      try{
+        result = oldApplyAIV64.apply(this,arguments);
+      }catch(e){
+        throw e;
+      }
+
+      try{
+        ensureV64();
+
+        /*
+         * 玩家物品
+         */
+        updatePlayerItemMetaV64(data);
+
+        /*
+         * NPC档案
+         */
+        reconcileNpcV64(data,beforeNpcBags);
+
+        /*
+         * 事实账本
+         */
+        processFactsFromAI_V64(data);
+
+        /*
+         * 长期记忆
+         */
+        rememberTurnV64(data,action,narrative);
+
+        /*
+         * 战斗
+         */
+        normalizeCombatV64();
+
+        /*
+         * 最终整理装备/背包
+         */
+        normalizePlayerInventoryV64();
+
+        /*
+         * 再补一次世界事实
+         */
+        collectStateFactsV64();
+
+        /*
+         * 轻量重新绘制相关区域
+         * 不重做整个游戏界面。
+         */
+        try{
+          if(typeof renderEquip === 'function') renderEquip();
+          if(typeof renderBag === 'function') renderBag();
+          if(typeof renderRel === 'function') renderRel();
+        }catch(e){}
+
+      }catch(e){
+        console.warn('[V64] AI后处理异常，但原剧情结果保留：',e);
+      }
+
+      return result;
+    };
+
+    window.applyAI.__v64BilateralHook = true;
+  }
+
+
+  /* ============================================================
+     十六、存档增强
+     
+     只新增 system._v64Core。
+     老存档没有这个字段也完全可以读取。
+     ============================================================ */
+
+  if(typeof window.buildSave === 'function' &&
+     !window.buildSave.__v64SaveHook){
+
+    var oldBuildSaveV64 = window.buildSave;
+
+    window.buildSave = function(){
+      var s = oldBuildSaveV64.apply(this,arguments);
+
+      try{
+        ensureV64();
+
+        if(!s.system) s.system = {};
+
+        s.system._v64Core = {
+          itemMeta:cloneV64(state._v64ItemMeta) || {},
+          facts:cloneV64(state._v64Facts) || {},
+          memory:cloneV64(state._v64Memory) || {
+            turns:[],
+            important:[],
+            index:{}
+          }
+        };
+
+      }catch(e){
+        console.warn('[V64] 存档附加数据失败',e);
+      }
+
+      return s;
+    };
+
+    window.buildSave.__v64SaveHook = true;
+  }
+
+
+  if(typeof window.applySave === 'function' &&
+     !window.applySave.__v64SaveHook){
+
+    var oldApplySaveV64 = window.applySave;
+
+    window.applySave = function(d){
+      var result = oldApplySaveV64.apply(this,arguments);
+
+      try{
+        ensureV64();
+
+        var x =
+          d &&
+          d.system &&
+          d.system._v64Core;
+
+        if(x){
+          state._v64ItemMeta =
+            x.itemMeta &&
+            typeof x.itemMeta === 'object' ?
+            x.itemMeta : {};
+
+          state._v64Facts =
+            x.facts &&
+            typeof x.facts === 'object' ?
+            x.facts : {};
+
+          state._v64Memory =
+            x.memory &&
+            typeof x.memory === 'object' ?
+            x.memory :
+            {
+              turns:[],
+              important:[],
+              index:{}
+            };
+        }else{
+          /*
+           * 老存档没有 V64 数据：
+           * 不覆盖原存档，只建立空的附加记忆层。
+           */
+          state._v64ItemMeta = state._v64ItemMeta || {};
+          state._v64Facts = state._v64Facts || {};
+          state._v64Memory = state._v64Memory || {
+            turns:[],
+            important:[],
+            index:{}
+          };
+        }
+
+        normalizePlayerInventoryV64();
+        collectStateFactsV64();
+        normalizeCombatV64();
+
+      }catch(e){
+        console.warn('[V64] 读档附加数据恢复失败',e);
+      }
+
+      return result;
+    };
+
+    window.applySave.__v64SaveHook = true;
+  }
+
+
+  /* ============================================================
+     十七、新游戏重置
+     ============================================================ */
+
+  if(typeof window.resetWorldState === 'function' &&
+     !window.resetWorldState.__v64ResetHook){
+
+    var oldResetV64 = window.resetWorldState;
+
+    window.resetWorldState = function(){
+      var result = oldResetV64.apply(this,arguments);
+
+      try{
+        ensureV64();
+
+        state._v64ItemMeta = {};
+        state._v64Facts = {};
+
+        state._v64Memory = {
+          turns:[],
+          important:[],
+          index:{}
+        };
+
+        /*
+         * feet 是新增槽位，
+         * 不干扰原有五个装备槽。
+         */
+        if(!state.equip || typeof state.equip !== 'object'){
+          state.equip = {};
+        }
+
+        if(!Object.prototype.hasOwnProperty.call(state.equip,'feet')){
+          state.equip.feet = null;
+        }
+
+        collectStateFactsV64();
+        normalizePlayerInventoryV64();
+
+      }catch(e){}
+
+      return result;
+    };
+
+    window.resetWorldState.__v64ResetHook = true;
+  }
+
+
+  /* ============================================================
+     十八、回退 / 再生成也恢复 V64 记忆
+     ============================================================ */
+
+  if(typeof window.execute === 'function' &&
+     !window.execute.__v64HistoryHook){
+
+    var oldExecuteV64 = window.execute;
+
+    window.execute = async function(){
+      var beforeCore = null;
+
+      try{
+        beforeCore = {
+          itemMeta:cloneV64(state._v64ItemMeta) || {},
+          facts:cloneV64(state._v64Facts) || {},
+          memory:cloneV64(state._v64Memory) || {
+            turns:[],
+            important:[],
+            index:{}
+          }
+        };
+      }catch(e){}
+
+      try{
+        return await oldExecuteV64.apply(this,arguments);
+      }finally{
+        try{
+          if(
+            beforeCore &&
+            Array.isArray(historyStack) &&
+            historyStack.length
+          ){
+            historyStack[historyStack.length - 1]._v64Core = beforeCore;
+          }
+        }catch(e){}
+      }
+    };
+
+    window.execute.__v64HistoryHook = true;
+  }
+
+
+  if(typeof window.rollbackStep === 'function' &&
+     !window.rollbackStep.__v64HistoryHook){
+
+    var oldRollbackV64 = window.rollbackStep;
+
+    window.rollbackStep = function(){
+      /*
+       * 先读取即将回退的快照。
+       * 原 rollbackStep 会自行 pop，所以这里提前暂存。
+       */
+      var snap = null;
+
+      try{
+        if(historyStack && historyStack.length){
+          snap = historyStack[historyStack.length - 1];
+        }
+      }catch(e){}
+
+      var result = oldRollbackV64.apply(this,arguments);
+
+      try{
+        if(snap && snap._v64Core){
+          state._v64ItemMeta =
+            cloneV64(snap._v64Core.itemMeta) || {};
+
+          state._v64Facts =
+            cloneV64(snap._v64Core.facts) || {};
+
+          state._v64Memory =
+            cloneV64(snap._v64Core.memory) || {
+              turns:[],
+              important:[],
+              index:{}
+            };
+
+          normalizePlayerInventoryV64();
+          collectStateFactsV64();
+        }
+      }catch(e){}
+
+      return result;
+    };
+
+    window.rollbackStep.__v64HistoryHook = true;
+  }
+
+
+  if(typeof window.regenerateStep === 'function' &&
+     !window.regenerateStep.__v64HistoryHook){
+
+    var oldRegenerateV64 = window.regenerateStep;
+
+    window.regenerateStep = function(){
+      var snap = null;
+
+      try{
+        if(historyStack && historyStack.length){
+          snap = historyStack[historyStack.length - 1];
+        }
+      }catch(e){}
+
+      var result = oldRegenerateV64.apply(this,arguments);
+
+      try{
+        if(snap && snap._v64Core){
+          state._v64ItemMeta =
+            cloneV64(snap._v64Core.itemMeta) || {};
+
+          state._v64Facts =
+            cloneV64(snap._v64Core.facts) || {};
+
+          state._v64Memory =
+            cloneV64(snap._v64Core.memory) || {
+              turns:[],
+              important:[],
+              index:{}
+            };
+
+          normalizePlayerInventoryV64();
+          collectStateFactsV64();
+        }
+      }catch(e){}
+
+      return result;
+    };
+
+    window.regenerateStep.__v64HistoryHook = true;
+  }
+
+
+  /* ============================================================
+     十九、启动时整理一次
+     
+     只整理背包和附加数据，不删除原状态。
+     ============================================================ */
+
+  try{
+    normalizePlayerInventoryV64();
+    collectStateFactsV64();
+
+    /*
+     * 如果当前装备栏只有五槽，
+     * V64 只在 renderEquip 时追加一个 feet。
+     */
+    if(typeof renderEquip === 'function'){
+      renderEquip();
+    }
+
+    if(typeof renderBag === 'function'){
+      renderBag();
+    }
+
+  }catch(e){
+    console.warn('[V64] 初始化整理失败，但不影响原游戏：',e);
+  }
+
+
+  /* ============================================================
+     二十、诊断函数
+     
+     浏览器控制台输入：
+     v64Check()
+     ============================================================ */
+
+  window.v64Check = function(){
+    try{
+      ensureV64();
+
+      console.log('========== V64 当前状态检查 ==========');
+
+      console.log('【玩家装备】',cloneV64(state.equip));
+      console.log('【普通背包】',cloneV64(state.bag));
+      console.log('【装备背包】',cloneV64(state.bagEquip));
+      console.log('【装备资料】',cloneV64(state._v64ItemMeta));
+
+      console.log('【NPC数量】',Object.keys(state.relations || {}).length);
+      console.log('【长期硬事实】',Object.keys(state._v64Facts || {}).length);
+      console.log('【V64回合记忆】',(state._v64Memory && state._v64Memory.turns || []).length);
+      console.log('【重要记忆】',(state._v64Memory && state._v64Memory.important || []).length);
+
+      if(state._v60Combat){
+        console.log('【当前战斗】',cloneV64(state._v60Combat));
+      }
+
+      console.log(
+        '【联网核验】',
+        window.__V64_WEB_VERIFY_ENABLED !== false ? '开启' : '关闭'
+      );
+
+      console.log('======================================');
+
+      return {
+        equip:cloneV64(state.equip),
+        bag:cloneV64(state.bag),
+        bagEquip:cloneV64(state.bagEquip),
+        npcCount:Object.keys(state.relations || {}).length,
+        facts:Object.keys(state._v64Facts || {}).length,
+        memories:(state._v64Memory && state._v64Memory.turns || []).length
+      };
+
+    }catch(e){
+      console.warn('[V64] 检查失败',e);
+      return null;
+    }
+  };
+
+
+  /* ============================================================
+     二十一、说明
+     ============================================================ */
+
+  console.log(
+    '%c[V64] 玩家物品/NPC档案/长期记忆/双向状态/联网核验/战斗安全层已挂载',
+    'color:#7c3aed;font-weight:700'
+  );
+
+  console.log(
+    '[V64] 原游戏模块保留；V60战斗保留；联网失败不会阻塞游戏。'
+  );
+
+})();
+
+/* ▲▲▲ V64 结束 ▲▲▲ */
+/* ▼▼▼ V65 · 新档途径规范化 + 旧档途径完全兼容保护 ▼▼▼ */
+
+(function(){
+  'use strict';
+
+  if(window.__V65_PATH_PROTECTION__) return;
+  window.__V65_PATH_PROTECTION__ = true;
+
+  /* ============================================================
+     一、途径名称规范表
+     
+     这里只负责“新档显示/结构化数据规范化”。
+     旧档绝不强制替换。
+     ============================================================ */
+
+  var PATH_CANON_V65 = {
+    /* 源堡 */
+    '愚者':'占卜家',
+    '错误':'偷盗者',
+    '门':'学徒',
+
+    /* 混沌海 */
+    '空想家':'观众',
+    '暴君':'水手',
+    '太阳':'歌颂者',
+    '白塔':'阅读者',
+    '倒吊人':'秘祈人',
+
+    /* 母巢 */
+    '母亲':'耕种者',
+    '月亮':'药师',
+
+    /* 永暗之河 */
+    '黑暗':'不眠者',
+    '黄昏巨人':'战士',
+    '死神':'收尸人',
+
+    /* 失序之国 */
+    '黑皇帝':'律师',
+    '审判者':'仲裁人',
+
+    /* 灾祸之城 */
+    '魔女':'刺客',
+    '女巫':'刺客',
+    '末日':'刺客',
+    '灾难':'刺客',
+    '欢愉':'刺客',
+    '痛苦':'刺客',
+    '绝望':'刺客',
+    '不老魔女':'刺客',
+    '红祭司':'猎人',
+    '征服者':'猎人',
+    '战争主教':'猎人',
+
+    /* 暗影世界 */
+    '深渊':'罪犯',
+    '被缚者':'囚犯',
+
+    /* 光之匙 */
+    '命运之轮':'怪物',
+
+    /* 知识荒野 */
+    '完美者':'通识者',
+    '隐者':'窥秘人'
+  };
+
+
+  /* ============================================================
+     二、规范化单个途径名称
+     ============================================================ */
+
+  function canonPathV65(path){
+    if(path === undefined || path === null) return path;
+
+    var s = String(path).trim();
+
+    if(!s) return s;
+
+    /*
+     * 如果 AI 写的是：
+     * “魔女途径”
+     * “红祭司途径”
+     * 这种写法也可以识别。
+     */
+    s = s.replace(/途径$/,'');
+
+    return PATH_CANON_V65[s] || s;
+  }
+
+
+  /* ============================================================
+     三、判断当前是不是“旧档保护模式”
+     
+     true：
+     当前存档的原始途径必须保持原样。
+     
+     false：
+     新档允许使用规范名称。
+     ============================================================ */
+
+  function isLegacyPathV65(){
+    return state && state._v65LegacyPath === true;
+  }
+
+
+  /* ============================================================
+     四、新游戏时开启“规范途径”
+     ============================================================ */
+
+  if(typeof window.resetWorldState === 'function' &&
+     !window.resetWorldState.__v65PathHook){
+
+    var oldResetPathV65 = window.resetWorldState;
+
+    window.resetWorldState = function(){
+
+      var result = oldResetPathV65.apply(this,arguments);
+
+      try{
+        /*
+         * 新游戏：
+         * 使用现在的正确途径名称。
+         */
+        state._v65LegacyPath = false;
+
+        state._v65PathPolicy = 'canonical-v1';
+
+        /*
+         * 普通人的初始状态保持原版。
+         * 等 AI 真正决定玩家进入某条途径时，
+         * 再把旧称自动转换成规范称呼。
+         */
+        if(
+          state.path === '魔女' ||
+          state.path === '红祭司' ||
+          PATH_CANON_V65[state.path]
+        ){
+          state.path = canonPathV65(state.path);
+        }
+
+      }catch(e){}
+
+      return result;
+    };
+
+    window.resetWorldState.__v65PathHook = true;
+  }
+
+
+  /* ============================================================
+     五、读档保护
+     
+     这是最重要的一层：
+     
+     旧存档没有 V65 标记：
+     → 直接进入旧档保护模式
+     → 原本是“魔女”就永远保持“魔女”
+     → 不自动改成“刺客”
+     
+     新存档有 V65 标记：
+     → 使用规范模式
+     ============================================================ */
+
+  if(typeof window.applySave === 'function' &&
+     !window.applySave.__v65PathHook){
+
+    var oldApplySavePathV65 = window.applySave;
+
+    window.applySave = function(d){
+
+      try{
+
+        var policy =
+          d &&
+          d.system &&
+          d.system._v65PathPolicy;
+
+        /*
+         * 明确标记为规范档：
+         * 新版本建立的新存档。
+         */
+        if(policy === 'canonical-v1'){
+          state._v65LegacyPath = false;
+          state._v65PathPolicy = 'canonical-v1';
+        }
+        /*
+         * 明确标记为旧档保护：
+         * 以后重新读取时也继续保护。
+         */
+        else if(policy === 'legacy-preserved'){
+          state._v65LegacyPath = true;
+          state._v65PathPolicy = 'legacy-preserved';
+        }
+        /*
+         * 没有这个字段：
+         * 一律认为是历史旧档。
+         *
+         * 这是为了防止你以前的老存档被突然改写。
+         */
+        else{
+          state._v65LegacyPath = true;
+          state._v65PathPolicy = 'legacy-preserved';
+        }
+
+      }catch(e){
+        /*
+         * 出问题时宁可按旧档处理，
+         * 也绝不把原途径强行改掉。
+         */
+        try{
+          state._v65LegacyPath = true;
+          state._v65PathPolicy = 'legacy-preserved';
+        }catch(ignore){}
+      }
+
+      var result = oldApplySavePathV65.apply(this,arguments);
+
+      /*
+       * 再次确认：
+       * 旧档的原始 path 保持原值。
+       */
+      try{
+
+        if(state._v65LegacyPath){
+
+          /*
+           * 读档前后不主动规范化。
+           * 这里不写 state.path = xxx。
+           */
+
+          if(
+            !state._v65OriginalPath &&
+            state.path
+          ){
+            state._v65OriginalPath = state.path;
+          }
+
+        }
+
+      }catch(e){}
+
+      return result;
+    };
+
+    window.applySave.__v65PathHook = true;
+  }
+
+
+  /* ============================================================
+     六、保存时记录“这是旧档还是新档”
+     
+     不改变原存档结构，只在 system 里增加一个小字段。
+     ============================================================ */
+
+  if(typeof window.buildSave === 'function' &&
+     !window.buildSave.__v65PathHook){
+
+    var oldBuildSavePathV65 = window.buildSave;
+
+    window.buildSave = function(){
+
+      var save = oldBuildSavePathV65.apply(this,arguments);
+
+      try{
+
+        if(!save.system){
+          save.system = {};
+        }
+
+        if(state._v65LegacyPath === true){
+
+          /*
+           * 旧档：
+           * 明确记录“保护原始途径”。
+           */
+          save.system._v65PathPolicy = 'legacy-preserved';
+
+        }else{
+
+          /*
+           * 新档：
+           * 使用规范途径名称。
+           */
+          save.system._v65PathPolicy = 'canonical-v1';
+
+        }
+
+      }catch(e){}
+
+      return save;
+    };
+
+    window.buildSave.__v65PathHook = true;
+  }
+
+
+  /* ============================================================
+     七、AI 更新玩家途径
+     
+     新档：
+     魔女 → 刺客
+     红祭司 → 猎人
+     
+     旧档：
+     完全不改。
+     ============================================================ */
+
+  if(typeof window.applyAI === 'function' &&
+     !window.applyAI.__v65PathHook){
+
+    var oldApplyAIPathV65 = window.applyAI;
+
+    window.applyAI = function(data,action){
+
+      /*
+       * 新档才在进入原 applyAI 前规范化。
+       *
+       * 这样后面的源质、战斗、能力、档案等
+       * 新系统看到的就是统一名称。
+       */
+      if(
+        !isLegacyPathV65() &&
+        data &&
+        data.stateChanges &&
+        data.stateChanges.playerUpdate
+      ){
+
+        var pu = data.stateChanges.playerUpdate;
+
+        if(pu.path){
+          pu.path = canonPathV65(pu.path);
+        }
+      }
+
+      /*
+       * 新档 NPC 的结构化途径也一起规范。
+       * 旧档 NPC 不动。
+       */
+      if(
+        !isLegacyPathV65() &&
+        data
+      ){
+
+        if(Array.isArray(data.npcUpdates)){
+
+          data.npcUpdates.forEach(function(npc){
+
+            if(npc && npc.path){
+              npc.path = canonPathV65(npc.path);
+            }
+
+          });
+
+        }
+
+        if(
+          data.stateChanges &&
+          Array.isArray(data.stateChanges.addRelation)
+        ){
+
+          data.stateChanges.addRelation.forEach(function(npc){
+
+            if(npc && npc.path){
+              npc.path = canonPathV65(npc.path);
+            }
+
+          });
+
+        }
+
+        if(Array.isArray(data.npcProfiles)){
+
+          data.npcProfiles.forEach(function(npc){
+
+            if(npc && npc.path){
+              npc.path = canonPathV65(npc.path);
+            }
+
+          });
+
+        }
+
+      }
+
+      var result = oldApplyAIPathV65.apply(this,arguments);
+
+      /*
+       * applyAI 原逻辑执行完以后再做一次玩家兜底。
+       *
+       * 这是为了兼容某些旧模块先写 state.path、
+       * 再处理 playerUpdate 的情况。
+       */
+      try{
+
+        if(!isLegacyPathV65()){
+
+          if(state.path){
+            var canonical = canonPathV65(state.path);
+
+            if(canonical !== state.path){
+
+              state.path = canonical;
+            }
+          }
+
+        }
+
+      }catch(e){}
+
+      return result;
+    };
+
+    window.applyAI.__v65PathHook = true;
+  }
+
+
+  /* ============================================================
+     八、让“旧档途径”同时拥有正确的系统别名
+     
+     注意：
+     这里绝对不是修改 state.path。
+     
+     例如：
+     
+     旧档：
+       state.path = "魔女"
+     
+     系统内部：
+       等价于灾祸之城 / 刺客体系
+     
+     但：
+       state.path 仍然是“魔女”
+     
+     所以：
+       老存档界面不会变
+       老存档数据不会变
+       老存档继续触发旧系统
+     ============================================================ */
+
+  window.v65GetPathSystemName = function(path){
+
+    var p = path;
+
+    /*
+     * 旧档的历史名称：
+     * 返回对应的新系统规范名称。
+     */
+    return canonPathV65(p);
+
+  };
+
+
+  window.v65IsLegacyPath = function(){
+    return isLegacyPathV65();
+  };
+
+
+  /* ============================================================
+     九、给 AI 一个非常明确的兼容规则
+     ============================================================ */
+
+  try{
+
+    if(
+      typeof GM_SYSTEM === 'string' &&
+      GM_SYSTEM.indexOf('【V65·途径兼容规则】') < 0
+    ){
+
+      GM_SYSTEM +=
+        '\n\n【V65·途径兼容规则】' +
+        '\n1. 新游戏建立的玩家途径，统一使用规范途径名称。' +
+        '\n2. “魔女”作为历史称谓对应刺客体系；新档结构化玩家途径应写“刺客”。' +
+        '\n3. “红祭司”作为历史称谓对应猎人体系；新档结构化玩家途径应写“猎人”。' +
+        '\n4. 同类对应关系包括：愚者→占卜家、错误→偷盗者、门→学徒、空想家→观众、暴君→水手、太阳→歌颂者、白塔→阅读者、倒吊人→秘祈人、母亲→耕种者、月亮→药师、黑暗→不眠者、黄昏巨人→战士、死神→收尸人、黑皇帝→律师、审判者→仲裁人、深渊→罪犯、被缚者→囚犯、命运之轮→怪物、完美者→通识者、隐者→窥秘人。' +
+        '\n5. 但是历史旧存档拥有自己的途径文字时，绝对不要擅自修改旧档的 path 字段。旧档的历史名称必须继续视为有效系统名称，只在进行源质、位格、战斗或其他规则判断时按其对应体系理解。' +
+        '\n6. 旧档中的“魔女”不能被改写成“刺客”，旧档中的“红祭司”不能被改写成“猎人”。' +
+        '\n7. 不得因为名称规范化而重置源质共鸣、源质持有、污染、能力、战斗、记忆、关系或其他已经存在的数据。';
+
+    }
+
+  }catch(e){}
+
+
+  /* ============================================================
+     十、诊断
+     
+     浏览器控制台输入：
+       v65PathCheck()
+     
+     可以直接看到：
+       当前是否旧档
+       当前原始途径
+       当前实际途径
+       系统对应途径
+     ============================================================ */
+
+  window.v65PathCheck = function(){
+
+    try{
+
+      var current = state.path || '';
+
+      console.log('════════════════════════════════');
+      console.log('【V65 途径保护检查】');
+      console.log('当前是否旧档：',state._v65LegacyPath === true ? '是' : '否');
+      console.log('当前途径：',current);
+      console.log('系统对应途径：',canonPathV65(current));
+      console.log('保存策略：',state._v65PathPolicy || '未记录');
+      console.log('原始途径记录：',state._v65OriginalPath || '(无)');
+      console.log('════════════════════════════════');
+
+      return {
+        legacy:state._v65LegacyPath === true,
+        path:current,
+        systemPath:canonPathV65(current),
+        policy:state._v65PathPolicy || ''
+      };
+
+    }catch(e){
+
+      console.warn('[V65] 检查失败',e);
+      return null;
+
+    }
+
+  };
+
+
+  console.log(
+    '%c[V65] 新档途径规范化 + 旧档途径保护已挂载',
+    'color:#2563eb;font-weight:bold'
+  );
+
+})();
+
+/* ▲▲▲ V65 结束 ▲▲▲ */
 </script>
 </body>
 </html>
