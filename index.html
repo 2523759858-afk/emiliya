@@ -16029,6 +16029,684 @@ console.log(
 
 })();
  /* ▲▲▲ V61.2 结束 ▲▲▲ */
+/* ▼▼▼ V61.3 · 剧情获得物品/材料安全层 ▼▼▼ */
+(function(){
+  'use strict';
+
+  if(window.__V61_3_ACQUIRE_SAFE__) return;
+  window.__V61_3_ACQUIRE_SAFE__ = true;
+
+
+  /* =========================================================
+     1. 基础安全工具
+     ========================================================= */
+
+  function safeText(v){
+
+    if(v === undefined || v === null) return '';
+
+    if(
+      typeof v === 'string' ||
+      typeof v === 'number' ||
+      typeof v === 'boolean'
+    ){
+      return String(v).trim();
+    }
+
+    try{
+
+      if(
+        v.name !== undefined &&
+        v.name !== null
+      ){
+        return String(v.name).trim();
+      }
+
+      if(
+        v.material !== undefined &&
+        v.material !== null
+      ){
+        return String(v.material).trim();
+      }
+
+      if(
+        v.item !== undefined &&
+        v.item !== null
+      ){
+        return String(v.item).trim();
+      }
+
+      if(
+        v.title !== undefined &&
+        v.title !== null
+      ){
+        return String(v.title).trim();
+      }
+
+    }catch(e){}
+
+    return '';
+  }
+
+
+  function safeQty(v){
+
+    var n = Number(v);
+
+    if(!isFinite(n) || n <= 0){
+      return 1;
+    }
+
+    return Math.max(
+      1,
+      Math.floor(n)
+    );
+  }
+
+
+  /* =========================================================
+     2. 只规范“本轮新获得的物品”
+     
+     不删除已有字段。
+     不扫描旧背包。
+     不移动旧物品。
+     ========================================================= */
+
+  function normalizeAcquiredItem(raw){
+
+    /*
+     * 空值暂时原样返回。
+     * 不私自制造物品。
+     */
+
+    if(
+      raw === undefined ||
+      raw === null
+    ){
+      return raw;
+    }
+
+
+    /*
+     * AI 直接返回：
+     *
+     * "黑面草"
+     */
+
+    if(
+      typeof raw === 'string' ||
+      typeof raw === 'number'
+    ){
+
+      var name =
+        safeText(raw);
+
+      if(name){
+
+        return {
+          name: name,
+          qty: 1
+        };
+
+      }
+
+      return raw;
+    }
+
+
+    /*
+     * 正常对象。
+     */
+
+    if(
+      typeof raw === 'object' &&
+      !Array.isArray(raw)
+    ){
+
+      var out = {};
+
+
+      /*
+       * 完整保留原字段。
+       *
+       * desc/type/effect/rarity/source
+       * 等其他字段全部不主动删除。
+       */
+
+      Object.keys(raw).forEach(function(k){
+
+        out[k] = raw[k];
+
+      });
+
+
+      /*
+       * 名称兼容。
+       */
+
+      var name2 =
+        safeText(
+          raw.name !== undefined
+            ? raw.name
+            : (
+                raw.material !== undefined
+                  ? raw.material
+                  : raw.item
+              )
+        );
+
+
+      if(name2){
+        out.name = name2;
+      }
+
+
+      /*
+       * 数量兼容。
+       */
+
+      if(raw.qty !== undefined){
+
+        out.qty =
+          safeQty(raw.qty);
+
+      }else if(
+        raw.quantity !== undefined
+      ){
+
+        out.qty =
+          safeQty(raw.quantity);
+
+      }else if(
+        raw.count !== undefined
+      ){
+
+        out.qty =
+          safeQty(raw.count);
+
+      }else{
+
+        out.qty = 1;
+
+      }
+
+
+      return out;
+    }
+
+
+    /*
+     * 数组等异常结构：
+     * 不删除，不擅自改成其他物品。
+     */
+
+    return raw;
+  }
+
+
+  function normalizeAddBag(raw){
+
+    /*
+     * 正常格式：
+     * addBag:[...]
+     */
+
+    if(Array.isArray(raw)){
+
+      return raw.map(function(item){
+
+        return normalizeAcquiredItem(item);
+
+      });
+
+    }
+
+
+    /*
+     * 兼容：
+     * addBag:{...}
+     */
+
+    return [
+      normalizeAcquiredItem(raw)
+    ];
+  }
+
+
+  /* =========================================================
+     3. Hook applyAI
+     
+     只处理：
+     stateChanges.addBag
+     
+     其他字段完全原样交给原 applyAI。
+     ========================================================= */
+
+  if(
+    typeof window.applyAI === 'function' &&
+    !window.applyAI.__v613AcquireSafe
+  ){
+
+    var oldApplyV613 =
+      window.applyAI;
+
+
+    window.applyAI = function(data, action){
+
+      var safeData = data;
+
+
+      try{
+
+        if(
+          data &&
+          data.stateChanges &&
+          typeof data.stateChanges === 'object'
+        ){
+
+          /*
+           * 浅复制 data。
+           * 不修改 AI 原始返回对象。
+           */
+
+          safeData = {};
+
+
+          Object.keys(data).forEach(function(k){
+
+            safeData[k] =
+              data[k];
+
+          });
+
+
+          safeData.stateChanges = {};
+
+
+          Object.keys(
+            data.stateChanges
+          ).forEach(function(k){
+
+            safeData.stateChanges[k] =
+              data.stateChanges[k];
+
+          });
+
+
+          /*
+           * 唯一处理点：
+           * 剧情真正获得的物品/材料。
+           */
+
+          if(
+            data.stateChanges.addBag !== undefined
+          ){
+
+            safeData.stateChanges.addBag =
+              normalizeAddBag(
+                data.stateChanges.addBag
+              );
+
+          }
+
+        }
+
+      }catch(e){
+
+        /*
+         * 补丁自己的异常绝对不能阻塞原游戏。
+         */
+
+        console.warn(
+          '[V61.3] addBag 预处理失败，继续使用原数据：',
+          e
+        );
+
+        safeData = data;
+      }
+
+
+      /*
+       * 原 applyAI 完整执行。
+       */
+
+      return oldApplyV613.call(
+        this,
+        safeData,
+        action
+      );
+    };
+
+
+    window.applyAI.__v613AcquireSafe = true;
+  }
+
+
+  /* =========================================================
+     4. 背包渲染安全层
+     
+     原 renderBag 正常：
+       → 完全不干预
+     
+     原 renderBag 抛异常：
+       → 才启用只读安全显示
+     
+     不删除 state.bag 中任何东西。
+     ========================================================= */
+
+  if(
+    typeof window.renderBag === 'function' &&
+    !window.renderBag.__v613RenderSafe
+  ){
+
+    var oldRenderBagV613 =
+      window.renderBag;
+
+
+    window.renderBag = function(){
+
+      try{
+
+        return oldRenderBagV613.apply(
+          this,
+          arguments
+        );
+
+      }catch(e){
+
+        console.warn(
+          '[V61.3] 原背包渲染异常，启用安全显示：',
+          e
+        );
+
+
+        try{
+
+          var box =
+            document.getElementById(
+              'bagList'
+            );
+
+
+          if(!box){
+            return;
+          }
+
+
+          box.innerHTML = '';
+
+
+          /*
+           * 这里只读 state.bag。
+           */
+
+          var list =
+            Array.isArray(state.bag)
+              ? state.bag
+              : [];
+
+
+          if(!list.length){
+
+            box.innerHTML =
+              '<div style="color:var(--tx-dim);font-size:11px;padding:8px 0;font-style:italic">' +
+              '随身行囊空空如也' +
+              '</div>';
+
+            return;
+          }
+
+
+          var h =
+            document.createElement(
+              'h3'
+            );
+
+          h.textContent =
+            '📦 普通物品';
+
+          box.appendChild(h);
+
+
+          list.forEach(function(item, idx){
+
+            try{
+
+              var d =
+                document.createElement(
+                  'div'
+                );
+
+              d.className =
+                'inv-item';
+
+
+              var name =
+                safeText(
+                  item &&
+                  item.name
+                ) ||
+                safeText(
+                  item &&
+                  item.material
+                ) ||
+                safeText(
+                  item &&
+                  item.item
+                ) ||
+                '未知物品';
+
+
+              var rawQty =
+                item &&
+                (
+                  item.qty !== undefined
+                    ? item.qty
+                    : (
+                        item.quantity !== undefined
+                          ? item.quantity
+                          : item.count
+                      )
+                );
+
+
+              var qty =
+                safeQty(rawQty);
+
+
+              d.innerHTML =
+                '<span class="n">📦 ' +
+                name +
+                '</span>' +
+                '<span class="q">x' +
+                qty +
+                '</span>';
+
+
+              d.onclick = function(){
+
+                try{
+
+                  if(
+                    typeof openItemDetail ===
+                    'function'
+                  ){
+
+                    openItemDetail(
+                      item,
+                      idx,
+                      'bag'
+                    );
+
+                  }
+
+                }catch(err){
+
+                  console.warn(
+                    '[V61.3] 物品详情打开失败：',
+                    err
+                  );
+
+                }
+
+              };
+
+
+              box.appendChild(d);
+
+            }catch(itemErr){
+
+              /*
+               * 单个坏结构不能拖垮整个背包。
+               */
+
+              console.warn(
+                '[V61.3] 单个物品安全显示失败：',
+                itemErr
+              );
+
+            }
+
+          });
+
+
+        }catch(fallbackErr){
+
+          console.warn(
+            '[V61.3] 背包安全显示也失败：',
+            fallbackErr
+          );
+
+        }
+
+      }
+    };
+
+
+    window.renderBag.__v613RenderSafe = true;
+  }
+
+
+  /* =========================================================
+     5. 存档只做序列化预检
+     
+     正常数据不改。
+     不主动删除任何物品。
+     ========================================================= */
+
+  if(
+    typeof window.buildSave === 'function' &&
+    !window.buildSave.__v613SaveSafe
+  ){
+
+    var oldBuildSaveV613 =
+      window.buildSave;
+
+
+    window.buildSave = function(){
+
+      var result =
+        oldBuildSaveV613.apply(
+          this,
+          arguments
+        );
+
+
+      try{
+
+        if(
+          result &&
+          result.char &&
+          result.char.bag !== undefined
+        ){
+
+          /*
+           * 这里只检查是否可正常序列化。
+           * 成功时不修改任何东西。
+           */
+
+          JSON.stringify(
+            result.char.bag
+          );
+
+        }
+
+      }catch(e){
+
+        /*
+         * 不删除数据。
+         * 只记录诊断信息。
+         */
+
+        console.warn(
+          '[V61.3] 检测到背包存档序列化异常；当前数据不会被删除：',
+          e
+        );
+
+      }
+
+
+      return result;
+    };
+
+
+    window.buildSave.__v613SaveSafe = true;
+  }
+
+
+  /* =========================================================
+     6. 诊断接口
+     
+     不自动修改任何数据。
+     ========================================================= */
+
+  window.v613AcquireCheck =
+    function(){
+
+      try{
+
+        console.log(
+          '===== V61.3 获得物品检查 ====='
+        );
+
+        console.log(
+          'state.bag =',
+          state.bag
+        );
+
+        console.log(
+          'state.bag 是否数组 =',
+          Array.isArray(state.bag)
+        );
+
+        console.log(
+          'state.recipes =',
+          state.recipes
+        );
+
+        console.log(
+          '[V61.3] 检查完成'
+        );
+
+      }catch(e){
+
+        console.warn(
+          '[V61.3] 检查失败：',
+          e
+        );
+
+      }
+
+    };
+
+
+  console.log(
+    '%c[V61.3] 剧情获得物品/材料安全层已挂载',
+    'color:#059669;font-weight:700'
+  );
+
+})();
+ /* ▲▲▲ V61.3 结束 ▲▲▲ */
 </script>
 </body>
 </html>
