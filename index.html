@@ -24290,6 +24290,2186 @@ console.log(
   }
 
 })();
+/* ▼▼▼ V68 · 旧档塔罗会自然补历史成员 + AI裁定真实住宅/安全据点 + 回家行动化 ▼▼▼ */
+(function(){
+  'use strict';
+
+  if(window.__V68_SAFE_FINAL__) return;
+  window.__V68_SAFE_FINAL__ = true;
+
+  var S = function(){ return window.state || null; };
+  var LEGACY_KEY = '_v68LegacySave';
+  var FORMAT_KEY = '_v68Format';
+  var TAROT_PENDING_KEY = '_v68RetroTarotPending';
+  var TAROT_INTRO_KEY = '_v68RetroTarotIntroduced';
+  var HOUSE_AUDIT_KEY = '_v68HouseAuditPending';
+  var HOUSE_AUDIT_DONE_KEY = '_v68HouseAuditDone';
+  var HOME_INTENT_KEY = '_v68HomeIntent';
+
+  var TAROT_CANON = [
+    {date:[1349,6,28], name:'克莱恩·莫雷蒂', card:'愚者'},
+    {date:[1349,6,28], name:'奥黛丽·霍尔', card:'正义'},
+    {date:[1349,6,28], name:'阿尔杰·威尔逊', card:'倒吊人'},
+    {date:[1349,8,19], name:'戴里克·伯格', card:'太阳'},
+    {date:[1349,10,15], name:'佛尔思·沃尔', card:'魔术师'},
+    {date:[1349,12,28], name:'埃姆林·怀特', card:'月亮'},
+    {date:[1350,1,23], name:'嘉德丽雅', card:'隐者'},
+    {date:[1350,7,1], name:'伦纳德·米切尔', card:'星星'},
+    {date:[1350,7,2], name:'休·迪尔查', card:'审判'}
+  ];
+
+  var ALIAS = {
+    '克莱恩·莫雷蒂':['克莱恩','克莱恩·莫雷蒂'],
+    '奥黛丽·霍尔':['奥黛丽','奥黛丽·霍尔'],
+    '阿尔杰·威尔逊':['阿尔杰','阿尔杰·威尔逊'],
+    '戴里克·伯格':['戴里克','戴里克·伯格'],
+    '佛尔思·沃尔':['佛尔思','佛尔思·沃尔'],
+    '埃姆林·怀特':['埃姆林','埃姆林·怀特'],
+    '嘉德丽雅':['嘉德丽雅','嘉德丽雅·泰·切斯特'],
+    '伦纳德·米切尔':['伦纳德','伦纳德·米切尔'],
+    '休·迪尔查':['休','休·迪尔查']
+  };
+
+  function clone(v){
+    try{return JSON.parse(JSON.stringify(v));}
+    catch(e){return null;}
+  }
+
+  function ensureState(){
+    var s=S();
+    if(!s) return false;
+
+    if(!Array.isArray(s.houses)) s.houses=[];
+    if(!Array.isArray(s[TAROT_PENDING_KEY])) s[TAROT_PENDING_KEY]=[];
+    if(!Array.isArray(s[TAROT_INTRO_KEY])) s[TAROT_INTRO_KEY]=[];
+    if(typeof s[LEGACY_KEY] !== 'boolean') s[LEGACY_KEY]=false;
+    if(typeof s[HOUSE_AUDIT_KEY] !== 'boolean') s[HOUSE_AUDIT_KEY]=false;
+    if(typeof s[HOUSE_AUDIT_DONE_KEY] !== 'boolean') s[HOUSE_AUDIT_DONE_KEY]=false;
+
+    return true;
+  }
+
+  function parseDate(text){
+    var s=String(text||'');
+    var m=s.match(/(\d{4})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日/);
+    if(!m) m=s.match(/(\d{4})[-\/]([0-9]{1,2})[-\/]([0-9]{1,2})/);
+    return m ? {y:+m[1],m:+m[2],d:+m[3]} : null;
+  }
+
+  function dateKey(d){
+    return d ? d.y*10000+d.m*100+d.d : 0;
+  }
+
+  function currentDate(){
+    return parseDate(S() && S().time);
+  }
+
+  function reached(ev,now){
+    return !!now &&
+      dateKey(now) >=
+      (ev.date[0]*10000+ev.date[1]*100+ev.date[2]);
+  }
+
+  function playerInTarot(){
+    var s=S();
+    if(!s) return false;
+
+    try{
+      if(
+        s.factions &&
+        s.factions['塔罗会'] &&
+        s.factions['塔罗会'].joined
+      ){
+        return true;
+      }
+    }catch(e){}
+
+    return !!s._v67PlayerTarotJoined;
+  }
+
+  function meetingToday(d){
+    if(!d) return false;
+
+    var anchor=
+      1349*360+
+      (10-1)*30+
+      (15-1);
+
+    var cur=
+      d.y*360+
+      (d.m-1)*30+
+      (d.d-1);
+
+    return cur>=anchor && ((cur-anchor)%7===0);
+  }
+
+  /* ============================================================
+     一、判断旧档里是否已经真正记录过某个塔罗会成员
+     ============================================================ */
+  function canonicalMembersInSavedData(d,name){
+    var sys=d && d.system || {};
+    var rel=(d && d.social && d.social.relations) || {};
+    var facts=sys._v67SafeFacts || {};
+    var tarot=sys._v67SafeTarot || {};
+    var socialF=(d && d.social && d.social.factions) || {};
+    var faction=socialF['塔罗会'] || {};
+    var members=
+      Array.isArray(faction.members)
+        ? faction.members
+        : [];
+
+    if(tarot[name]) return true;
+
+    if(
+      facts[name] &&
+      facts[name].tarot
+    ){
+      return true;
+    }
+
+    if(
+      rel[name] &&
+      (
+        rel[name].faction==='塔罗会' ||
+        rel[name].organization==='塔罗会'
+      )
+    ){
+      return true;
+    }
+
+    if(members.indexOf(name)>=0){
+      return true;
+    }
+
+    try{
+      var mem=
+        Array.isArray(sys.memoryEntries)
+          ? sys.memoryEntries
+          : [];
+
+      if(
+        mem.some(function(m){
+          var t=JSON.stringify(m||'');
+
+          return (
+            t.indexOf(name)>=0 &&
+            t.indexOf('塔罗会')>=0 &&
+            /加入|成为|会议|召集/.test(t)
+          );
+        })
+      ){
+        return true;
+      }
+    }catch(e){}
+
+    return false;
+  }
+
+  /* ============================================================
+     二、旧档需要自然补入的历史成员
+     ============================================================ */
+  function computeRetroTarotPending(savedData){
+    var s=S();
+
+    if(
+      !s ||
+      !s[LEGACY_KEY] ||
+      !playerInTarot()
+    ){
+      return [];
+    }
+
+    var now=currentDate();
+
+    if(!now){
+      return [];
+    }
+
+    var introduced={};
+
+    (
+      s[TAROT_INTRO_KEY] ||
+      []
+    ).forEach(function(n){
+      introduced[n]=true;
+    });
+
+    var out=[];
+
+    TAROT_CANON.forEach(function(ev){
+
+      /*
+       * 1349-06-28 初始三人不作为
+       * “后来加入”的旧档补员。
+       */
+      if(
+        ev.date[0]===1349 &&
+        ev.date[1]===6
+      ){
+        return;
+      }
+
+      if(!reached(ev,now)){
+        return;
+      }
+
+      if(introduced[ev.name]){
+        return;
+      }
+
+      if(
+        !canonicalMembersInSavedData(
+          savedData || {},
+          ev.name
+        )
+      ){
+        out.push(ev.name);
+      }
+
+    });
+
+    return out;
+  }
+
+  /* ============================================================
+     三、给正式塔罗会会议的旧档补员提示
+     ============================================================ */
+  function tarotRetroContext(){
+    var s=S();
+
+    if(
+      !s ||
+      !playerInTarot()
+    ){
+      return '';
+    }
+
+    var pending=
+      (s[TAROT_PENDING_KEY]||[])
+      .filter(Boolean);
+
+    var d=currentDate();
+
+    if(
+      !pending.length ||
+      !d ||
+      !meetingToday(d)
+    ){
+      return '';
+    }
+
+    return [
+      '【V68·旧档塔罗会自然补历史成员】',
+
+      '玩家已经是塔罗会成员。这是旧档兼容补全，不是改写过去。',
+
+      '以下人物已经达到其客观的原著加入时间，但旧档没有可靠记录玩家曾经见过或正式记录他们。',
+
+      '本次正式塔罗会会议中，由愚者先生自然地主持并把这些成员拉入/介绍进塔罗会。',
+
+      '待补成员：'+
+        pending.join('、')+
+        '。',
+
+      '不要把他们的原著加入日期改成今天。',
+
+      '不要伪造玩家过去已经提前认识、提前交往或提前建立关系。',
+
+      '本次会议可以自然地作为玩家第一次正式见到其中尚未认识的人。',
+
+      '新档绝不套用此规则；新档严格按照正常原著时间线推进。'
+    ].join('\n');
+  }
+
+  /* ============================================================
+     四、AI实际写出介绍后，再完成对应历史成员的补录
+     ============================================================ */
+  function markRetroIntroduced(data,action){
+    var s=S();
+
+    if(
+      !s ||
+      !s[LEGACY_KEY] ||
+      !meetingToday(currentDate())
+    ){
+      return;
+    }
+
+    var pending=
+      (s[TAROT_PENDING_KEY]||[])
+      .slice();
+
+    if(!pending.length){
+      return;
+    }
+
+    var text='';
+
+    try{
+      text=
+        String(action||'')+
+        '\n'+
+        JSON.stringify(data||{});
+    }catch(e){
+      text=String(action||'');
+    }
+
+    if(
+      !/塔罗会|灰雾之上|愚者先生|会议|加入/.test(text)
+    ){
+      return;
+    }
+
+    var remain=[];
+
+    pending.forEach(function(name){
+
+      var aliases=
+        ALIAS[name] ||
+        [name];
+
+      var hit=
+        aliases.some(function(a){
+          return text.indexOf(a)>=0;
+        });
+
+      var introScene=
+        /(加入|拉入|介绍|召集|正式会议|会议席位|灰雾之上)/
+        .test(text);
+
+      if(
+        hit &&
+        introScene &&
+        s[TAROT_INTRO_KEY].indexOf(name)<0
+      ){
+        s[TAROT_INTRO_KEY].push(name);
+      }else{
+        remain.push(name);
+      }
+
+    });
+
+    s[TAROT_PENDING_KEY]=remain;
+  }
+
+  /* ============================================================
+     五、住宅：前端只负责落地 AI 已经确认的真实取得
+     ============================================================ */
+
+  var ALLOWED_ACQUISITION = {
+    birthright:true,
+    inheritance:true,
+    purchase:true,
+    gift:true,
+    organization_grant:true,
+    official_grant:true,
+    seize:true,
+    conquest:true,
+    other:true
+  };
+
+  var FORBIDDEN_ACQUISITION = {
+    rent:true,
+    rental:true,
+    borrow:true,
+    borrowed:true,
+    hotel:true,
+    inn:true,
+    temporary:true,
+    temporary_stay:true,
+    stay:true
+  };
+
+  function normalizeAcquisition(v){
+    var s=
+      String(v||'')
+      .trim()
+      .toLowerCase();
+
+    if(FORBIDDEN_ACQUISITION[s]){
+      return '';
+    }
+
+    if(ALLOWED_ACQUISITION[s]){
+      return s;
+    }
+
+    return '';
+  }
+
+  function findHouseById(id){
+    var s=S();
+
+    if(
+      !s ||
+      !Array.isArray(s.houses)
+    ){
+      return null;
+    }
+
+    for(
+      var i=0;
+      i<s.houses.length;
+      i++
+    ){
+
+      if(
+        s.houses[i] &&
+        String(s.houses[i].id||'')===
+        String(id||'')
+      ){
+        return s.houses[i];
+      }
+
+    }
+
+    return null;
+  }
+
+  function findHouseByName(name,type){
+    var s=S();
+
+    if(
+      !s ||
+      !Array.isArray(s.houses)
+    ){
+      return null;
+    }
+
+    for(
+      var i=0;
+      i<s.houses.length;
+      i++
+    ){
+
+      var h=s.houses[i];
+
+      if(!h){
+        continue;
+      }
+
+      if(
+        String(h.name||'')===
+        String(name||'') &&
+        (!type ||
+          String(h.type||'')===
+          type)
+      ){
+        return h;
+      }
+
+    }
+
+    return null;
+  }
+
+  function ensureHouseId(){
+    return (
+      'house_v68_' +
+      Date.now() +
+      '_' +
+      Math.floor(
+        Math.random()*100000
+      )
+    );
+  }
+
+  /* ============================================================
+     六、真正创建/更新住宅实体
+     ============================================================ */
+  function applyHouseAcquire(entry){
+    var s=S();
+
+    if(
+      !s ||
+      !entry ||
+      typeof entry!=='object'
+    ){
+      return null;
+    }
+
+    var acquisition=
+      normalizeAcquisition(
+        entry.acquisition ||
+        entry.acquireType ||
+        entry.method
+      );
+
+    var kind=
+      String(
+        entry.type ||
+        entry.kind ||
+        'residence'
+      ).trim();
+
+    var isSafe=
+      /^safe(?:house)?$/i.test(kind) ||
+      kind==='安全据点' ||
+      kind==='据点';
+
+    var isResidence=!isSafe;
+
+    if(
+      isResidence &&
+      !acquisition
+    ){
+      return null;
+    }
+
+    /*
+     * 即使 AI 误把租住写成 other，
+     * 前端也不允许把租住/借住变成房产。
+     */
+    if(isResidence){
+
+      var acquisitionEvidence='';
+
+      try{
+        acquisitionEvidence=
+          JSON.stringify(entry);
+      }catch(e){
+        acquisitionEvidence=
+          String(entry);
+      }
+
+      if(
+        /租住|租房|租下|出租|借住|借宿|旅馆|旅店|酒店|暂住|临时住所|短租|长租|租赁/
+        .test(acquisitionEvidence)
+      ){
+        return null;
+      }
+
+    }
+
+    var name=
+      String(
+        entry.name||''
+      ).trim();
+
+    if(!name){
+      return null;
+    }
+
+    var existing=
+      findHouseByName(
+        name,
+        isSafe
+          ? '安全据点'
+          : '居所'
+      );
+
+    if(existing){
+
+      if(entry.location){
+        existing.location=
+          String(entry.location);
+      }
+
+      if(entry.owner){
+        existing.owner=
+          String(entry.owner);
+      }
+
+      if(entry.relation){
+        existing.relation=
+          String(entry.relation);
+      }
+
+      if(entry.ownership){
+        existing.ownership=
+          String(entry.ownership);
+      }
+
+      if(entry.playerRoom){
+        existing.playerRoom=
+          String(entry.playerRoom);
+      }
+
+      if(
+        Array.isArray(entry.rooms)
+      ){
+        existing.rooms=
+          entry.rooms.slice();
+      }
+
+      if(
+        Array.isArray(entry.facilities)
+      ){
+        existing.facilities=
+          entry.facilities.slice();
+      }
+
+      if(entry.security){
+        existing.security=
+          String(entry.security);
+      }
+
+      if(entry.comfort){
+        existing.comfort=
+          String(entry.comfort);
+      }
+
+      if(entry.storage){
+        existing.storage=
+          String(entry.storage);
+      }
+
+      existing.status=
+        String(
+          entry.status ||
+          existing.status ||
+          'active'
+        );
+
+      if(entry.acquisition){
+        existing.acquisition=
+          acquisition ||
+          existing.acquisition;
+      }
+
+      existing.lastConfirmedAt=
+        String(
+          s.time||
+          ''
+        );
+
+      if(
+        isResidence &&
+        entry.setPrimary===true
+      ){
+        s.residence=
+          existing.name;
+      }
+
+      return existing;
+    }
+
+    var h={
+      id:ensureHouseId(),
+
+      name:name,
+
+      type:
+        isSafe
+          ? '安全据点'
+          : '居所',
+
+      acquisition:
+        isSafe
+          ? String(
+              entry.acquisition ||
+              entry.acquireType ||
+              'control'
+            )
+          : acquisition,
+
+      ownership:
+        String(
+          entry.ownership ||
+          (
+            isSafe
+              ? '玩家控制/使用'
+              : '玩家实际拥有/合法居住'
+          )
+        ),
+
+      owner:
+        String(
+          entry.owner||''
+        ),
+
+      relation:
+        String(
+          entry.relation ||
+          (
+            isSafe
+              ? '玩家控制/使用'
+              : '玩家拥有/家族共有'
+          )
+        ),
+
+      location:
+        String(
+          entry.location||''
+        ),
+
+      playerRoom:
+        String(
+          entry.playerRoom||''
+        ),
+
+      rooms:
+        Array.isArray(entry.rooms)
+          ? entry.rooms.slice()
+          : [],
+
+      facilities:
+        Array.isArray(entry.facilities)
+          ? entry.facilities.slice()
+          : [],
+
+      security:
+        String(
+          entry.security||''
+        ),
+
+      comfort:
+        String(
+          entry.comfort||''
+        ),
+
+      storage:
+        String(
+          entry.storage||''
+        ),
+
+      status:
+        String(
+          entry.status||
+          'active'
+        ),
+
+      source:'AI',
+
+      lastConfirmedAt:
+        String(
+          s.time||''
+        )
+    };
+
+    s.houses.push(h);
+
+    if(
+      isResidence &&
+      entry.setPrimary===true
+    ){
+      s.residence=
+        h.name;
+    }
+
+    return h;
+  }
+
+  function applyHouseChanges(data){
+    var s=S();
+
+    if(!s){
+      return;
+    }
+
+    var sc=
+      data &&
+      data.stateChanges ||
+      {};
+
+    var list=[];
+
+    if(
+      Array.isArray(
+        sc.houseAcquire
+      )
+    ){
+      list=
+        list.concat(
+          sc.houseAcquire
+        );
+    }
+
+    if(
+      Array.isArray(
+        sc.addOwnedHouse
+      )
+    ){
+      list=
+        list.concat(
+          sc.addOwnedHouse
+        );
+    }
+
+    if(
+      Array.isArray(
+        sc.acquireHouse
+      )
+    ){
+      list=
+        list.concat(
+          sc.acquireHouse
+        );
+    }
+
+    if(
+      Array.isArray(
+        data &&
+        data.houseAcquire
+      )
+    ){
+      list=
+        list.concat(
+          data.houseAcquire
+        );
+    }
+
+    list.forEach(function(entry){
+
+      try{
+        applyHouseAcquire(entry);
+      }catch(e){
+        console.warn(
+          '[V68] house acquire:',
+          e
+        );
+      }
+
+    });
+
+    try{
+      if(
+        typeof renderHouses===
+        'function'
+      ){
+        renderHouses();
+      }
+    }catch(e){}
+  }
+
+  /* ============================================================
+     七、住宅状态进入 AI
+     ============================================================ */
+  function housingContext(){
+    var s=S();
+
+    if(
+      !s ||
+      !Array.isArray(s.houses) ||
+      !s.houses.length
+    ){
+      return (
+        '【V68·住宅状态】当前没有已登记的居所/安全据点。'
+      );
+    }
+
+    var lines=[
+      '【V68·住宅与安全据点】',
+      '“居所”和“安全据点”是两个独立概念，可以同时存在多个。',
+      '下面只列出已经由世界事实或AI结构化结果确认的对象，不得自行新增不存在的住宅。'
+    ];
+
+    s.houses
+      .slice(-20)
+      .forEach(function(h){
+
+        if(!h){
+          return;
+        }
+
+        var line=
+          '- '+
+          (h.type||'居所')+
+          '：'+
+          (h.name||'未命名');
+
+        if(h.location){
+          line+=
+            '｜位置：'+
+            h.location;
+        }
+
+        if(h.ownership){
+          line+=
+            '｜归属：'+
+            h.ownership;
+        }
+
+        if(h.relation){
+          line+=
+            '｜关系：'+
+            h.relation;
+        }
+
+        if(h.acquisition){
+          line+=
+            '｜取得方式：'+
+            h.acquisition;
+        }
+
+        if(h.playerRoom){
+          line+=
+            '｜玩家房间：'+
+            h.playerRoom;
+        }
+
+        if(h.security){
+          line+=
+            '｜安全：'+
+            h.security;
+        }
+
+        if(h.status){
+          line+=
+            '｜状态：'+
+            h.status;
+        }
+
+        lines.push(line);
+
+      });
+
+    if(
+      s.residence &&
+      !/^(待定|无固定住所|没有固定住所|暂无)$/
+      .test(
+        String(
+          s.residence
+        )
+      )
+    ){
+      lines.push(
+        '当前主要居所：'+
+        String(
+          s.residence
+        )
+      );
+    }
+
+    lines.push(
+      '获得新的“居所”必须是真实取得：出生即有、继承、购买、他人赠送、组织/官方授予、合理的夺取/占领等。租住、借宿、旅馆、短期藏身、临时使用不得登记为玩家拥有的居所。'
+    );
+
+    return lines.join('\n');
+  }
+
+  /* ============================================================
+     八、旧档住宅历史审计
+     ============================================================ */
+  function houseAuditContext(){
+    var s=S();
+
+    if(
+      !s ||
+      !s[LEGACY_KEY] ||
+      !s[HOUSE_AUDIT_KEY]
+    ){
+      return '';
+    }
+
+    return [
+      '【V68·旧档住宅历史审计】',
+
+      '这是一个已经存在的旧存档。前端不会自行从背景或记忆推断玩家有房产；请你作为GM检查已有世界书、玩家背景、结构化记忆、剧情日志和当前身份。',
+
+      '判断旧档过去或当前是否已经存在“真正属于玩家/家族、且玩家实际拥有或作为固定家族居所使用”的房产。',
+
+      '只有证据明确支持时，才返回 stateChanges.houseAcquire。',
+
+      '允许的取得方式：birthright（出生即有/家族先天居所）、inheritance（继承）、purchase（购买）、gift（他人赠送）、organization_grant（组织授予）、official_grant（官方授予）、seize/conquest（剧情中真实夺取/占领）、other（其他明确的真实取得方式）。',
+
+      '禁止把租房、旅馆、借宿、短期安全屋、临时藏身处直接变成玩家房产。',
+
+      '若证据不足，什么都不要新增，并返回 houseAudit:{reviewed:true,added:false}。',
+
+      '如果背景明确显示玩家从出生就属于有宅邸的贵族家庭，例如公爵/侯爵/伯爵/子爵/男爵子女，并且背景或开局事实支持该家族有实际宅邸，可以作为 birthright 家族居所登记；同时尽量给出玩家私人房间。',
+
+      '安全据点与居所分开处理；只有剧情明确表明玩家控制/拥有的据点才登记。'
+    ].join('\n');
+  }
+
+  /* ============================================================
+     九、回家行动上下文
+     ============================================================ */
+  function homeIntentContext(){
+    var s=S();
+
+    var intent=
+      s &&
+      s[HOME_INTENT_KEY];
+
+    if(!intent){
+      return '';
+    }
+
+    if(
+      intent.at &&
+      Date.now()-
+      intent.at>60000
+    ){
+      try{
+        delete s[HOME_INTENT_KEY];
+      }catch(e){}
+
+      return '';
+    }
+
+    var h=
+      findHouseById(
+        intent.houseId
+      ) ||
+      findHouseByName(
+        intent.houseName,
+        '居所'
+      ) ||
+      findHouseByName(
+        intent.houseName,
+        '安全据点'
+      );
+
+    if(!h){
+      return '';
+    }
+
+    return [
+      '【V68·回家行动】',
+
+      '玩家主动选择把本轮行动用于“回家/前往自己的住所”。',
+
+      '目标：'+
+        h.name+
+        '｜类型：'+
+        (h.type||'居所')+
+        '｜位置：'+
+        (h.location||'未记录'),
+
+      '回家本身必须消耗一次完整行动，由AI判断这次行动在当前情境是否成立。',
+
+      '如果玩家正在正式战斗、死亡状态、被封锁、被囚禁、处于必须立即处理的特殊状态、空间/距离明显不允许返回，不能直接瞬移回家。',
+
+      'AI必须返回 stateChanges.homeTravel：{allowed:true/false,houseId:"...",reached:true/false,location:"...",reason:"...",rest:true/false}。',
+
+      'allowed=false 时，不得把玩家当前位置强行改成住宅；应在正文解释无法立即回家的原因。',
+
+      'allowed=true 且 reached=true 时，才能把玩家移动到该住宅。除非返回 rest:true，否则不要自动恢复体力。'
+    ].join('\n');
+  }
+
+  function v68Context(){
+    return [
+      tarotRetroContext(),
+      housingContext(),
+      houseAuditContext(),
+      homeIntentContext()
+    ]
+    .filter(Boolean)
+    .join('\n\n');
+  }
+
+  /* ============================================================
+     十、GM规则
+     ============================================================ */
+  function appendGMRules(){
+
+    if(
+      typeof GM_SYSTEM!=='string'
+    ){
+      return;
+    }
+
+    if(
+      GM_SYSTEM.indexOf(
+        '【V68·住宅与回家行动规则】'
+      )>=0
+    ){
+      return;
+    }
+
+    GM_SYSTEM += [
+      '',
+      '【V68·住宅与回家行动规则】',
+
+      '1. 住宅不是普通描述字段，而是真实世界实体；正文涉及家庭、休息、访客、储物、安保、居住权时应参考已登记住宅。',
+
+      '2. 前端不得因为“租住/借宿/住旅馆/临时藏身”自动创造玩家拥有的住宅。',
+
+      '3. 新增玩家居所必须由明确剧情取得：出生即有、继承、购买、他人赠送、组织/官方授予、真实夺取/占领或其他明确取得。',
+
+      '4. 新游戏开局时，如果玩家背景已经明确表明其先天拥有或作为家族成员拥有固定宅邸，可以在初次结构化结果中返回 houseAcquire；如果背景没有证据，不要凭空发放房产。',
+
+      '5. 旧档兼容时，由GM根据已有背景、记忆、日志和身份自行判断是否原本就拥有房产；证据不足则不要补房。',
+
+      '6. 安全据点与普通居所不同，可以多个，但不能无依据凭空产生。',
+
+      '7. 玩家点击“回家/前往住所”占用一次行动；是否能回去必须由AI结合战斗、距离、囚禁、特殊事件、空间状态和剧情因果判断。禁止把回家处理成无消耗的瞬间传送。',
+
+      '8. 回家相关的结构化字段使用 stateChanges.homeTravel；没有明确允许时不得把玩家直接移动回住宅。',
+
+      '9. 若本轮真的取得了新的房屋，必须返回 stateChanges.houseAcquire 数组；若没有真实取得，不要返回 houseAcquire。',
+
+      '10. 租住、借住等信息可以写在正文或记忆中，但不得伪装成玩家拥有的“居所实体”。'
+    ].join('\n');
+  }
+
+  /* ============================================================
+     十一、API上下文
+     ============================================================ */
+  function wrapCallAPI(){
+
+    if(
+      typeof window.callAPI!=='function' ||
+      window.callAPI.__v68safe
+    ){
+      return;
+    }
+
+    var old=
+      window.callAPI;
+
+    window.callAPI=
+      async function(msgs,cfg){
+
+        try{
+
+          ensureState();
+
+          appendGMRules();
+
+          var p=
+            v68Context();
+
+          if(
+            p &&
+            Array.isArray(msgs) &&
+            !msgs.some(function(m){
+              return String(
+                (m&&m.content)||
+                ''
+              ).indexOf(
+                '【V68·'
+              )>=0;
+            })
+          ){
+
+            msgs=
+              msgs.map(function(m){
+
+                var x={};
+
+                Object.keys(m||{})
+                  .forEach(function(k){
+                    x[k]=m[k];
+                  });
+
+                return x;
+              });
+
+            var inserted=false;
+
+            for(
+              var i=0;
+              i<msgs.length;
+              i++
+            ){
+
+              if(
+                msgs[i] &&
+                msgs[i].role==='system'
+              ){
+
+                msgs[i].content=
+                  String(
+                    msgs[i].content||
+                    ''
+                  )+
+                  '\n\n'+
+                  p;
+
+                inserted=true;
+
+                break;
+              }
+
+            }
+
+            if(!inserted){
+
+              msgs.unshift({
+                role:'system',
+                content:p
+              });
+
+            }
+
+          }
+
+        }catch(e){
+
+          console.warn(
+            '[V68] callAPI上下文异常，原API继续',
+            e
+          );
+
+        }
+
+        return old.apply(
+          this,
+          [msgs,cfg]
+        );
+      };
+
+    window.callAPI.__v68safe=true;
+  }
+
+  /* ============================================================
+     十二、applyAI
+     ============================================================ */
+  function wrapApplyAI(){
+
+    if(
+      typeof window.applyAI!=='function' ||
+      window.applyAI.__v68safe
+    ){
+      return;
+    }
+
+    var old=
+      window.applyAI;
+
+    window.applyAI=
+      function(data,action){
+
+        var s=S();
+
+        var homeIntent=
+          s &&
+          s[HOME_INTENT_KEY]
+            ? clone(
+                s[HOME_INTENT_KEY]
+              )
+            : null;
+
+        var beforeLocation=
+          s
+            ? s.location
+            : '';
+
+        var beforeResidence=
+          s
+            ? s.residence
+            : '';
+
+        var result=
+          old.apply(
+            this,
+            arguments
+          );
+
+        try{
+
+          ensureState();
+
+          applyHouseChanges(data);
+
+          /*
+           * 原有 applyAI 会直接处理 playerUpdate.residence。
+           * V68 要求：这个字段只能指向已经确认存在的“居所”实体。
+           * 因此没有 houseAcquire 的租房/借住等 residence 不进入正式住宅系统。
+           */
+          try{
+
+            var pu=
+              data &&
+              data.stateChanges &&
+              data.stateChanges.playerUpdate;
+
+            if(
+              pu &&
+              pu.residence
+            ){
+
+              var askedResidence=
+                String(
+                  pu.residence
+                ).trim();
+
+              var registered=
+                findHouseByName(
+                  askedResidence,
+                  '居所'
+                );
+
+              if(
+                !registered &&
+                s
+              ){
+                s.residence=
+                  beforeResidence;
+              }
+
+            }
+
+          }catch(e){}
+
+          markRetroIntroduced(
+            data,
+            action
+          );
+
+          /* ===============================================
+             回家行动裁决
+             =============================================== */
+          if(homeIntent){
+
+            var sc=
+              data &&
+              data.stateChanges ||
+              {};
+
+            var ht=
+              sc.homeTravel ||
+              (
+                data &&
+                data.homeTravel
+              ) ||
+              null;
+
+            var allowed=
+              !!(
+                ht &&
+                ht.allowed===true &&
+                ht.reached===true
+              );
+
+            var target=
+              findHouseById(
+                homeIntent.houseId
+              ) ||
+              findHouseByName(
+                homeIntent.houseName,
+                '居所'
+              ) ||
+              findHouseByName(
+                homeIntent.houseName,
+                '安全据点'
+              );
+
+            if(
+              !allowed ||
+              !target
+            ){
+
+              if(s){
+
+                s.location=
+                  beforeLocation;
+
+                if(beforeResidence){
+                  s.residence=
+                    beforeResidence;
+                }
+
+                delete s[HOME_INTENT_KEY];
+              }
+
+            }else{
+
+              if(s){
+
+                if(ht.location){
+
+                  s.location=
+                    String(
+                      ht.location
+                    );
+
+                }else if(
+                  target.location
+                ){
+
+                  s.location=
+                    String(
+                      target.location
+                    );
+
+                }else{
+
+                  s.location=
+                    target.name;
+
+                }
+
+                if(
+                  target.type==='居所'
+                ){
+                  s.residence=
+                    target.name;
+                }
+
+                /*
+                 * 回到家后是否真正休整，也交给AI。
+                 * AI明确给 rest:true 才执行原有的恢复效果。
+                 */
+                if(
+                  ht.rest===true
+                ){
+
+                  s.hp=
+                    Math.min(
+                      s.maxHp,
+                      s.hp+25
+                    );
+
+                  s.mp=
+                    Math.min(
+                      s.maxMp,
+                      s.mp+15
+                    );
+
+                  s.sp=
+                    Math.min(
+                      s.maxSp,
+                      s.sp+10
+                    );
+
+                  try{
+
+                    if(
+                      typeof toast==='function'
+                    ){
+
+                      toast(
+                        '🏠 回到住所后休整：体力与灵性得到恢复'
+                      );
+
+                    }
+
+                  }catch(e){}
+
+                }
+
+                delete s[HOME_INTENT_KEY];
+
+                try{
+
+                  if(
+                    typeof renderUI==='function'
+                  ){
+                    renderUI();
+                  }
+
+                }catch(e){}
+
+              }
+
+            }
+
+          }
+
+          /* ===============================================
+             旧档住宅审计完成
+             =============================================== */
+          if(
+            s &&
+            s[HOUSE_AUDIT_KEY]
+          ){
+
+            var sc2=
+              data &&
+              data.stateChanges ||
+              {};
+
+            var audited=
+              (
+                sc2.houseAudit &&
+                sc2.houseAudit.reviewed===true
+              ) ||
+              (
+                data &&
+                data.houseAudit &&
+                data.houseAudit.reviewed===true
+              );
+
+            if(audited){
+
+              s[HOUSE_AUDIT_KEY]=false;
+              s[HOUSE_AUDIT_DONE_KEY]=true;
+
+            }
+
+          }
+
+          try{
+
+            if(
+              typeof renderHouses==='function'
+            ){
+              renderHouses();
+            }
+
+          }catch(e){}
+
+        }catch(e){
+
+          console.warn(
+            '[V68] applyAI附加同步异常，原游戏结果保留',
+            e
+          );
+
+        }
+
+        return result;
+      };
+
+    window.applyAI.__v68safe=true;
+  }
+
+  /* ============================================================
+     十三、存档/读档
+     ============================================================ */
+  function wrapSave(){
+
+    /* -------------------------
+       buildSave
+       ------------------------- */
+    if(
+      typeof window.buildSave==='function' &&
+      !window.buildSave.__v68safe
+    ){
+
+      var oldBuild=
+        window.buildSave;
+
+      window.buildSave=
+        function(){
+
+          var out=
+            oldBuild.apply(
+              this,
+              arguments
+            );
+
+          try{
+
+            if(!out.system){
+              out.system={};
+            }
+
+            out.system[FORMAT_KEY]=2;
+
+            out.system[LEGACY_KEY]=
+              !!(
+                S() &&
+                S()[LEGACY_KEY]
+              );
+
+            out.system[TAROT_PENDING_KEY]=
+              clone(
+                (
+                  S() &&
+                  S()[TAROT_PENDING_KEY]
+                )||
+                []
+              )||
+              [];
+
+            out.system[TAROT_INTRO_KEY]=
+              clone(
+                (
+                  S() &&
+                  S()[TAROT_INTRO_KEY]
+                )||
+                []
+              )||
+              [];
+
+            out.system[HOUSE_AUDIT_KEY]=
+              !!(
+                S() &&
+                S()[HOUSE_AUDIT_KEY]
+              );
+
+            out.system[HOUSE_AUDIT_DONE_KEY]=
+              !!(
+                S() &&
+                S()[HOUSE_AUDIT_DONE_KEY]
+              );
+
+          }catch(e){
+
+            console.warn(
+              '[V68] buildSave附加失败，原存档继续',
+              e
+            );
+
+          }
+
+          return out;
+        };
+
+      window.buildSave.__v68safe=true;
+
+    }
+
+    /* -------------------------
+       applySave
+       ------------------------- */
+    if(
+      typeof window.applySave==='function' &&
+      !window.applySave.__v68safe
+    ){
+
+      var oldSave=
+        window.applySave;
+
+      window.applySave=
+        function(d){
+
+          var result=
+            oldSave.apply(
+              this,
+              arguments
+            );
+
+          try{
+
+            ensureState();
+
+            var s=S();
+
+            var sys=
+              d &&
+              d.system ||
+              {};
+
+            var isV68=
+              sys[FORMAT_KEY]===2;
+
+            /*
+             * V68以前的存档视为旧档。
+             * V68之后建立并保存的存档有明确格式标记，
+             * 新档不会被错误当成旧档回补。
+             */
+            s[LEGACY_KEY]=
+              isV68
+                ? !!sys[LEGACY_KEY]
+                : true;
+
+            s[TAROT_PENDING_KEY]=
+              Array.isArray(
+                sys[TAROT_PENDING_KEY]
+              )
+                ? sys[TAROT_PENDING_KEY].slice()
+                : [];
+
+            s[TAROT_INTRO_KEY]=
+              Array.isArray(
+                sys[TAROT_INTRO_KEY]
+              )
+                ? sys[TAROT_INTRO_KEY].slice()
+                : [];
+
+            s[HOUSE_AUDIT_KEY]=
+              isV68
+                ? !!sys[HOUSE_AUDIT_KEY]
+                : false;
+
+            s[HOUSE_AUDIT_DONE_KEY]=
+              isV68
+                ? !!sys[HOUSE_AUDIT_DONE_KEY]
+                : false;
+
+            /*
+             * 旧存档：
+             * 只登记“需要AI审计”，
+             * 不由前端直接造房。
+             */
+            if(
+              !isV68 &&
+              s[LEGACY_KEY]
+            ){
+
+              var retro=
+                computeRetroTarotPending(
+                  d||{}
+                );
+
+              var seen={};
+
+              s[TAROT_PENDING_KEY]
+                .forEach(function(n){
+                  seen[n]=true;
+                });
+
+              retro.forEach(function(n){
+
+                if(!seen[n]){
+
+                  s[TAROT_PENDING_KEY]
+                    .push(n);
+
+                  seen[n]=true;
+
+                }
+
+              });
+
+              s[HOUSE_AUDIT_KEY]=true;
+              s[HOUSE_AUDIT_DONE_KEY]=false;
+
+            }
+
+            try{
+
+              if(
+                typeof renderHouses==='function'
+              ){
+                renderHouses();
+              }
+
+            }catch(e){}
+
+          }catch(e){
+
+            console.warn(
+              '[V68] applySave附加失败，原存档继续',
+              e
+            );
+
+          }
+
+          return result;
+        };
+
+      window.applySave.__v68safe=true;
+    }
+
+    /* -------------------------
+       resetWorldState
+       新档必须清除旧档补全状态
+       ------------------------- */
+    if(
+      typeof window.resetWorldState==='function' &&
+      !window.resetWorldState.__v68safe
+    ){
+
+      var oldReset=
+        window.resetWorldState;
+
+      window.resetWorldState=
+        function(){
+
+          var result=
+            oldReset.apply(
+              this,
+              arguments
+            );
+
+          try{
+
+            ensureState();
+
+            var s=S();
+
+            s[LEGACY_KEY]=false;
+            s[TAROT_PENDING_KEY]=[];
+            s[TAROT_INTRO_KEY]=[];
+            s[HOUSE_AUDIT_KEY]=false;
+            s[HOUSE_AUDIT_DONE_KEY]=false;
+
+            delete s[HOME_INTENT_KEY];
+
+          }catch(e){
+
+            console.warn(
+              '[V68] reset附加失败',
+              e
+            );
+
+          }
+
+          return result;
+        };
+
+      window.resetWorldState.__v68safe=true;
+    }
+  }
+
+  /* ============================================================
+     十四、初始创生阶段的住宅规则
+     ============================================================ */
+  function hookGenInit(){
+
+    if(
+      typeof window.genInit!=='function' ||
+      window.genInit.__v68safe
+    ){
+      return;
+    }
+
+    var old=
+      window.genInit;
+
+    window.genInit=
+      async function(){
+
+        appendGMRules();
+
+        var baseGM=
+          typeof GM_SYSTEM==='string'
+            ? GM_SYSTEM
+            : null;
+
+        try{
+
+          if(
+            typeof GM_SYSTEM==='string' &&
+            GM_SYSTEM.indexOf(
+              '【V68·开局住宅结构化输出】'
+            )<0
+          ){
+
+            GM_SYSTEM +=
+              '\n\n【V68·开局住宅结构化输出】'+
+              '\n开局创生时，若玩家背景明确说明其出生家庭本身拥有宅邸、府邸、庄园等固定居所，且该居所确实属于其出生背景，则必须在 stateChanges.houseAcquire 中结构化记录；acquisition 使用 birthright，type 使用 residence，并尽量提供 location、playerRoom、rooms、security 等。'+
+              '\n如果背景没有这种明确证据，不要为了“贵族感/有钱”发放房产。'+
+              '\n租房、旅馆、借宿、临时住所绝不能作为 houseAcquire。';
+
+          }
+
+          return await old.apply(
+            this,
+            arguments
+          );
+
+        }finally{
+
+          if(baseGM!==null){
+            GM_SYSTEM=baseGM;
+          }
+
+        }
+
+      };
+
+    window.genInit.__v68safe=true;
+  }
+
+  /* ============================================================
+     十五、住宅点击行为
+     只拦截原有 houseList 点击，
+     不重建住宅面板，不改其他板块。
+     ============================================================ */
+  function installHouseActionListener(){
+
+    if(
+      window.__V68_HOUSE_ACTION_LISTENER__
+    ){
+      return;
+    }
+
+    window.__V68_HOUSE_ACTION_LISTENER__=true;
+
+    document.addEventListener(
+      'click',
+      function(e){
+
+        try{
+
+          var target=
+            e.target;
+
+          var list=
+            document.getElementById(
+              'houseList'
+            );
+
+          if(
+            !list ||
+            !target ||
+            !target.closest
+          ){
+            return;
+          }
+
+          var item=
+            target.closest(
+              '.inv-item'
+            );
+
+          if(
+            !item ||
+            item.parentNode!==list
+          ){
+            return;
+          }
+
+          var s=S();
+
+          if(
+            !s ||
+            !Array.isArray(s.houses) ||
+            !s.houses.length
+          ){
+            return;
+          }
+
+          var items=
+            list.querySelectorAll(
+              '.inv-item'
+            );
+
+          var index=-1;
+
+          for(
+            var i=0;
+            i<items.length;
+            i++
+          ){
+
+            if(items[i]===item){
+
+              index=i;
+
+              break;
+
+            }
+
+          }
+
+          if(
+            index<0 ||
+            !s.houses[index]
+          ){
+            return;
+          }
+
+          var h=
+            s.houses[index];
+
+          /*
+           * 阻止旧 renderHouses 的“点击即免费休息”行为。
+           */
+          e.preventDefault();
+          e.stopPropagation();
+
+          if(
+            e.stopImmediatePropagation
+          ){
+            e.stopImmediatePropagation();
+          }
+
+          if(
+            s._v60Dead
+          ){
+
+            try{
+
+              if(
+                typeof toast==='function'
+              ){
+                toast(
+                  '当前状态无法回家。'
+                );
+              }
+
+            }catch(err){}
+
+            return;
+          }
+
+          var input=
+            document.getElementById(
+              'actionInput'
+            );
+
+          if(
+            !input ||
+            typeof window.execute!=='function'
+          ){
+            return;
+          }
+
+          s[HOME_INTENT_KEY]={
+            houseId:
+              String(
+                h.id||''
+              ),
+
+            houseName:
+              String(
+                h.name||''
+              ),
+
+            at:Date.now()
+          };
+
+          var action=
+            '返回【'+
+            String(
+              h.name||
+              '住所'
+            )+
+            '】。';
+
+          /*
+           * 进入现有 execute，
+           * 所以它就是一个完整游戏行动。
+           */
+          input.value=
+            action;
+
+          try{
+
+            window.execute();
+
+          }catch(err){
+
+            delete s[
+              HOME_INTENT_KEY
+            ];
+
+            try{
+
+              if(
+                typeof toast==='function'
+              ){
+                toast(
+                  '回家行动未能发起。'
+                );
+              }
+
+            }catch(e2){}
+
+          }
+
+        }catch(err){
+
+          console.warn(
+            '[V68] house click',
+            err
+          );
+
+        }
+
+      },
+      true
+    );
+  }
+
+  /* ============================================================
+     十六、安全安装
+     ============================================================ */
+  function install(){
+
+    try{
+
+      ensureState();
+
+      appendGMRules();
+
+      wrapCallAPI();
+      wrapApplyAI();
+      wrapSave();
+
+      hookGenInit();
+
+      installHouseActionListener();
+
+    }catch(e){
+
+      console.warn(
+        '[V68] 安装保护：',
+        e
+      );
+
+    }
+  }
+
+  install();
+
+  /*
+   * 防止原 HTML 的函数定义顺序导致首次安装过早。
+   */
+  var tries=0;
+
+  var timer=
+    setInterval(
+      function(){
+
+        tries++;
+
+        install();
+
+        if(
+          tries>30 ||
+          (
+            window.callAPI &&
+            window.callAPI.__v68safe &&
+            window.applyAI &&
+            window.applyAI.__v68safe
+          )
+        ){
+
+          clearInterval(
+            timer
+          );
+
+        }
+
+      },
+      250
+    );
+
+  /* ============================================================
+     十七、诊断
+     控制台：
+       v68Check()
+     ============================================================ */
+  window.v68Check=
+    function(){
+
+      ensureState();
+
+      var s=S();
+
+      return {
+
+        legacy:
+          !!s[LEGACY_KEY],
+
+        format:
+          2,
+
+        tarotPending:
+          (
+            s[TAROT_PENDING_KEY]||
+            []
+          ).slice(),
+
+        tarotIntroduced:
+          (
+            s[TAROT_INTRO_KEY]||
+            []
+          ).slice(),
+
+        houseAuditPending:
+          !!s[HOUSE_AUDIT_KEY],
+
+        houseAuditDone:
+          !!s[HOUSE_AUDIT_DONE_KEY],
+
+        residence:
+          s.residence,
+
+        houses:
+          clone(
+            s.houses
+          )||
+          [],
+
+        homeIntent:
+          clone(
+            s[HOME_INTENT_KEY]
+          )||
+          null
+
+      };
+
+    };
+
+  console.log(
+    '%c[V68 SAFE FINAL] 旧档塔罗会自然补历史成员 + AI住宅取得裁定 + 回家行动化已启动',
+    'color:#0f766e;font-weight:700'
+  );
+
+})();
+/* ▲▲▲ V68 结束 ▲▲▲ */
 </script>
 </body>
 </html>
