@@ -3459,13 +3459,9 @@ var WORLD_TIMELINE = [
     npcs: [{ name: '克莱恩', seq: '序列7' }] },
   { date: [1349, 12, 1], note: '克莱恩晋升无面人',
     npcs: [{ name: '克莱恩', seq: '序列6' }] },
-  { date: [1350, 3, 1], note: '莎伦晋升序列7',
-    npcs: [{ name: '莎伦', seq: '序列7' }] },
-  { date: [1350, 6, 1], note: '克莱恩晋升秘偶大师',
+    { date: [1350, 3, 1], note: '克莱恩晋升秘偶大师',
     npcs: [{ name: '克莱恩', seq: '序列5' }] },
-  { date: [1351, 1, 1], note: '特里斯晋升序列7',
-    npcs: [{ name: '特里斯', seq: '序列7' }] }
-];
+ ];
 
 // 解析 AI 返回的时间字符串为 [年, 月, 日]，失败返回 null
 function parseTimeStr_v8(s) {
@@ -8739,32 +8735,7 @@ function genItemDesc_v11(name) {
       npcs: [{ name: '克莱恩·莫雷蒂', seq: '序列7' }] },
     { id: 7, date: [1349, 12, 1], note: '克莱恩晋升无面人',
       npcs: [{ name: '克莱恩·莫雷蒂', seq: '序列6' }] },
-    // ===== 1350 =====
-    { id: 8, date: [1350, 3, 1], note: '莎伦晋升序列7',
-      npcs: [{ name: '莎伦', seq: '序列7' }] },
-    { id: 9, date: [1350, 6, 1], note: '克莱恩晋升秘偶大师',
-      npcs: [{ name: '克莱恩·莫雷蒂', seq: '序列5' }] },
-    { id: 10, date: [1350, 9, 1], note: '克莱恩于南大陆库克瓦城击杀因斯·赞格威尔，完成复仇',
-      npcs: [{ name: '因斯·赞格威尔', status: '死亡' }] },
-    // ===== 1351 =====
-    { id: 11, date: [1351, 1, 1], note: '特莉丝晋升序列7',
-      npcs: [{ name: '特莉丝', seq: '序列7' }] },
-    { id: 12, date: [1351, 6, 1], note: '克莱恩晋升诡法师（序列4半神）',
-      npcs: [{ name: '克莱恩·莫雷蒂', seq: '序列4' }] },
-    // ===== 1352 =====
-    { id: 13, date: [1352, 3, 1], note: '克莱恩晋升奇迹师（序列2天使）',
-      npcs: [{ name: '克莱恩·莫雷蒂', seq: '序列2' }] },
-    { id: 14, date: [1352, 9, 1], note: '克莱恩组建秘偶小镇乌托邦，晋升序列1诡秘侍者',
-      npcs: [{ name: '克莱恩·莫雷蒂', seq: '序列1' }] },
-    { id: 15, date: [1352, 10, 1], note: '乔治三世试图晋升黑皇帝真神，举行成神仪式',
-      npcs: [{ name: '乔治三世', status: '成神仪式准备中' }] },
-    { id: 16, date: [1352, 10, 15], note: '克莱恩联合塔罗会破坏乔治三世成神仪式，乔治三世陨落',
-      npcs: [{ name: '乔治三世', status: '死亡' }] },
-    { id: 17, date: [1352, 11, 1], note: '白银城小队探索暗天使沉睡之地，洛薇雅·蒂芙尼与首席长老科林牺牲',
-      npcs: [{ name: '洛薇雅·蒂芙尼', status: '牺牲' }, { name: '科林·伊利亚特', status: '牺牲' }] },
-    { id: 18, date: [1352, 12, 1], note: '克莱恩晋升序列0愚者，成为真神',
-      npcs: [{ name: '克莱恩·莫雷蒂', seq: '序列0' }] },
-    // ===== 1368（终极威胁）=====
+       // ===== 1368（终极威胁）=====
     { id: 99, date: [1368, 7, 28], note: '外神降世·深红从天而降——旧日与堕落母神突破屏障，末日降临',
       npcs: [], _cosmicThreat: true }
   ];
@@ -22207,6 +22178,2118 @@ console.log(
 })();
 
 /* ▲▲▲ V65 结束 ▲▲▲ */
+(function(){
+  'use strict';
+  if(window.__V67_SAFE_FINAL__) return;
+  window.__V67_SAFE_FINAL__ = true;
+
+  var FACT_KEY = '_v67SafeFacts';
+  var BRANCH_KEY = '_v67SafeBranches';
+  var MEMORY_KEY = '_v67SafeMemory';
+  var TAROT_KEY = '_v67SafeTarot';
+  var LAST_DATE_KEY = '_v67SafeLastDate';
+  var MARK = '[V67_SAFE_CONTEXT]';
+
+  function clone(v){
+    try { return JSON.parse(JSON.stringify(v)); }
+    catch(e){ return null; }
+  }
+
+  function S(){
+    return window.state || null;
+  }
+
+  function ensure(){
+    var s = S();
+    if(!s) return false;
+
+    if(!s.relations) s.relations = {};
+    if(!s[FACT_KEY]) s[FACT_KEY] = {};
+    if(!s[BRANCH_KEY]) s[BRANCH_KEY] = {};
+    if(!Array.isArray(s[MEMORY_KEY])) s[MEMORY_KEY] = [];
+    if(!s[TAROT_KEY]) s[TAROT_KEY] = {};
+    if(!s._worldTimelineLog) s._worldTimelineLog = {};
+
+    return true;
+  }
+
+  var ALIAS = {
+    '克莱恩':'克莱恩·莫雷蒂',
+    '克莱恩·莫雷蒂':'克莱恩·莫雷蒂',
+
+    '奥黛丽':'奥黛丽·霍尔',
+    '奥黛丽·霍尔':'奥黛丽·霍尔',
+
+    '阿尔杰':'阿尔杰·威尔逊',
+    '阿尔杰·威尔逊':'阿尔杰·威尔逊',
+
+    '戴里克':'戴里克·伯格',
+    '戴里克·伯格':'戴里克·伯格',
+
+    '佛尔思':'佛尔思·沃尔',
+    '佛尔思·沃尔':'佛尔思·沃尔',
+
+    '埃姆林':'埃姆林·怀特',
+    '埃姆林·怀特':'埃姆林·怀特',
+
+    '伦纳德':'伦纳德·米切尔',
+    '伦纳德·米切尔':'伦纳德·米切尔',
+
+    '休':'休·迪尔查',
+    '休·迪尔查':'休·迪尔查',
+
+    '莎伦':'莎伦',
+    '嘉德丽雅':'嘉德丽雅',
+    '苏茜':'苏茜'
+  };
+
+  function canon(n){
+    var x = String(n || '').trim();
+    return ALIAS[x] || x;
+  }
+
+  function dateNow(){
+    var s = String((S() && S().time) || '');
+
+    var m = s.match(/(\d{4})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日/);
+
+    if(!m){
+      m = s.match(/(\d{4})[-\/]([0-9]{1,2})[-\/]([0-9]{1,2})/);
+    }
+
+    if(!m) return null;
+
+    return {
+      y:+m[1],
+      m:+m[2],
+      d:+m[3]
+    };
+  }
+
+  function keyDate(d){
+    return d ? d.y * 10000 + d.m * 100 + d.d : null;
+  }
+
+  function dateText(d){
+    if(!d) return String((S() && S().time) || '');
+
+    return d.y + '-' +
+      String(d.m).padStart(2,'0') + '-' +
+      String(d.d).padStart(2,'0');
+  }
+
+  function reached(y,m,d,now,precision){
+    if(!now) return false;
+
+    if(precision === 'month'){
+      return (now.y * 100 + now.m) >= (y * 100 + m);
+    }
+
+    return keyDate(now) >= (y * 10000 + m * 100 + d);
+  }
+
+  function seqNum(v){
+    var m = String(v || '').match(/序列\s*([0-9])/);
+
+    if(m) return parseInt(m[1],10);
+
+    if(/天使之王/.test(String(v || ''))) return 1;
+    if(/真神/.test(String(v || ''))) return 0;
+
+    return 99;
+  }
+
+  function seqText(n,title){
+    return '序列' + n + (title ? '·' + title : '');
+  }
+
+  /*
+   * 已确认的旧错误节点
+   * 这里只阻止错误聚合节点，不冻结整个时间线。
+   */
+  var BAD_V59 = {
+    'V58-1350-09-28-core': true
+  };
+
+  function blockBadNodes(){
+    var s = S();
+    if(!s) return;
+
+    Object.keys(BAD_V59).forEach(function(id){
+      if(!s._worldTimelineLog[id]){
+        s._worldTimelineLog[id] = {};
+      }
+
+      s._worldTimelineLog[id]._v67Blocked = true;
+      s._worldTimelineLog[id].override =
+        'V67权威层：该旧聚合节点包含错误NPC状态，不再直接应用。';
+    });
+
+    /*
+     * 旧V32的 id=8 是已删除的错误莎伦节点。
+     * 如果旧代码残留，则只禁用这个节点。
+     */
+    if(!s._worldTimelineLog[8]){
+      s._worldTimelineLog[8] = {};
+    }
+
+    s._worldTimelineLog[8]._v67Blocked = true;
+    s._worldTimelineLog[8].override =
+      'V67权威层：旧V32错误莎伦节点已禁用。';
+  }
+
+  /*
+   * 如果旧V8时间线仍然存在，则过滤掉已经确认删除的
+   * 1350-03-01 莎伦序列7节点。
+   *
+   * 只处理这一条，不清空整个 WORLD_TIMELINE。
+   */
+  function sanitizeLegacyV8(){
+    try{
+      if(Array.isArray(window.WORLD_TIMELINE)){
+
+        window.WORLD_TIMELINE = window.WORLD_TIMELINE.filter(function(node){
+
+          if(!node || !node.date) return true;
+
+          return !(
+            node.date[0] === 1350 &&
+            node.date[1] === 3 &&
+            node.date[2] === 1 &&
+            /莎伦.*序列7|莎伦晋升序列7/.test(
+              String(node.note || '')
+            )
+          );
+        });
+
+      }
+    }catch(e){}
+  }
+
+  /*
+   * V67补充的可靠客观事实。
+   *
+   * 注意：
+   * 不在这里乱填不确定日期。
+   */
+  var FACT_EVENTS = [
+
+    {
+      id:'V67-FORS-TAROT-1349-10-15',
+      type:'tarot',
+      date:[1349,10,15],
+      name:'佛尔思·沃尔',
+      card:'魔术师'
+    },
+
+    {
+      id:'V67-FORS-S6-1350-09-28',
+      type:'seq',
+      date:[1350,9,28],
+      name:'佛尔思·沃尔',
+      path:'学徒',
+      seq:6,
+      title:'记录官'
+    },
+
+    {
+      id:'V67-DERRICK-S5-1350-09-28',
+      type:'seq',
+      date:[1350,9,28],
+      name:'戴里克·伯格',
+      path:'歌颂者',
+      seq:5,
+      title:'光之祭司'
+    },
+
+    {
+      id:'V67-AUDREY-S4-1350-12-22',
+      type:'seq',
+      date:[1350,12,22],
+      name:'奥黛丽·霍尔',
+      path:'观众',
+      seq:4,
+      title:'操纵师'
+    },
+
+    {
+      id:'V67-SUSIE-S6-1350-12-22',
+      type:'seq',
+      date:[1350,12,22],
+      name:'苏茜',
+      path:'观众',
+      seq:6,
+      title:'催眠师'
+    },
+
+    {
+      id:'V67-DERRICK-S4-1351-09-15',
+      type:'seq',
+      date:[1351,9,15],
+      name:'戴里克·伯格',
+      path:'歌颂者',
+      seq:4,
+      title:'无暗者'
+    },
+
+    {
+      id:'V67-ALGER-S4-1351-09-15',
+      type:'seq',
+      date:[1351,9,15],
+      name:'阿尔杰·威尔逊',
+      path:'水手',
+      seq:4,
+      title:'灾难主祭'
+    },
+
+    {
+      id:'V67-LEONARD-S5-1350-10-03',
+      type:'seq',
+      date:[1350,10,3],
+      name:'伦纳德·米切尔',
+      path:'不眠者',
+      seq:5,
+      title:'灵巫'
+    },
+
+    {
+      id:'V67-AUDREY-S5-1350-10-07',
+      type:'seq',
+      date:[1350,10,7],
+      name:'奥黛丽·霍尔',
+      path:'观众',
+      seq:5,
+      title:'梦境行者'
+    },
+
+    {
+      id:'V67-CATTLEYA-S4-1350-09-27',
+      type:'seq',
+      date:[1350,9,27],
+      name:'嘉德丽雅',
+      path:'窥秘人',
+      seq:4,
+      title:'神秘学家'
+    },
+
+    {
+      id:'V67-EMLYN-S6-1350-01-31',
+      type:'seq',
+      date:[1350,1,31],
+      name:'埃姆林·怀特',
+      path:'药师',
+      seq:6,
+      title:'魔药教授'
+    },
+
+    {
+      id:'V67-ALGER-S6-1350-01-29',
+      type:'seq',
+      date:[1350,1,29],
+      name:'阿尔杰·威尔逊',
+      path:'水手',
+      seq:6,
+      title:'风眷者'
+    },
+
+    {
+      id:'V67-AUDREY-S7-1350-01-12',
+      type:'seq',
+      date:[1350,1,12],
+      name:'奥黛丽·霍尔',
+      path:'观众',
+      seq:7,
+      title:'心理医生'
+    },
+
+    {
+      id:'V67-KLEIN-S5-1350-04-16',
+      type:'seq',
+      date:[1350,4,16],
+      name:'克莱恩·莫雷蒂',
+      path:'占卜家',
+      seq:5,
+      title:'秘偶大师'
+    },
+
+    {
+      id:'V67-KLEIN-S6-1349-12-23',
+      type:'seq',
+      date:[1349,12,23],
+      name:'克莱恩·莫雷蒂',
+      path:'占卜家',
+      seq:6,
+      title:'无面人'
+    },
+
+    {
+      id:'V67-KLEIN-S7-1349-10-10',
+      type:'seq',
+      date:[1349,10,10],
+      name:'克莱恩·莫雷蒂',
+      path:'占卜家',
+      seq:7,
+      title:'魔术师'
+    },
+
+    {
+      id:'V67-AUDREY-S8-1349-09-17',
+      type:'seq',
+      date:[1349,9,17],
+      name:'奥黛丽·霍尔',
+      path:'观众',
+      seq:8,
+      title:'读心者'
+    },
+
+    {
+      id:'V67-SUSIE-S8-1349-12-15',
+      type:'seq',
+      date:[1349,12,15],
+      name:'苏茜',
+      path:'观众',
+      seq:8,
+      title:'读心者'
+    }
+  ];
+
+  /*
+   * 给后台原著人物建立基础档案。
+   * 不覆盖用户已有完整档案。
+   */
+  function ensureRel(name){
+    var s = S();
+    var c = canon(name);
+
+    if(!s) return null;
+
+    if(!s.relations[c]){
+      s.relations[c] = {
+        fav:'未知',
+        favVal:30,
+        desc:'后台原著人物档案',
+
+        gender:'未知',
+        age:'未知',
+        identity:'原著人物',
+
+        personality:'未知',
+        appearance:'未知',
+
+        status:'活动中',
+        action:'在各处活动',
+        thought:'不可知',
+
+        hp:100,
+        maxHp:100,
+
+        mp:10,
+        maxMp:10,
+
+        sp:100,
+        maxSp:100,
+
+        bag:[],
+
+        path:'凡俗',
+        seq:'凡人',
+
+        location:'未知',
+        faction:'',
+
+        _background:true
+      };
+    }
+
+    return s.relations[c];
+  }
+
+  /*
+   * 独立的客观事实层。
+   * 防止旧档案重新覆盖当前状态。
+   */
+  function ensureFact(name){
+    var s = S();
+    var c = canon(name);
+
+    if(!s) return null;
+
+    if(!s[FACT_KEY][c]){
+      s[FACT_KEY][c] = {
+        name:c,
+        path:'',
+        seqNum:99,
+        seqText:'',
+        status:'活动中',
+        history:[],
+        tarot:false,
+        card:'',
+        joinDate:null
+      };
+    }
+
+    return s[FACT_KEY][c];
+  }
+
+  /*
+   * 长期记忆写入。
+   * 同一事实不重复无限写。
+   */
+  function remember(item){
+    var s = S();
+    if(!s) return;
+
+    var k = [
+      item.kind || '',
+      item.name || '',
+      item.seq || '',
+      item.date || '',
+      item.eventId || '',
+      item.text || ''
+    ].join('|');
+
+    if(
+      s[MEMORY_KEY].some(function(x){
+        return x && x.key === k;
+      })
+    ){
+      return;
+    }
+
+    item.key = k;
+    s[MEMORY_KEY].push(item);
+
+    /*
+     * 同步到原有结构化记忆。
+     */
+    try{
+      if(
+        Array.isArray(s.memoryEntries) &&
+        !s.memoryEntries.some(function(x){
+          return x && x._v67Key === k;
+        })
+      ){
+        s.memoryEntries.push({
+          id:'v67-' + s[MEMORY_KEY].length,
+          time:item.date || dateText(dateNow()),
+          location:s.location || '',
+          npcs:item.name ? [item.name] : [],
+          items:[],
+          events:[item.text || ''],
+          importance:5,
+          rawText:item.text || '',
+          _v67Key:k
+        });
+      }
+    }catch(e){}
+
+    /*
+     * 同步到原有长期记忆。
+     */
+    try{
+      if(
+        s.memory &&
+        Array.isArray(s.memory.long) &&
+        !s.memory.long.some(function(x){
+          return x && x._v67Key === k;
+        })
+      ){
+        s.memory.long.push({
+          type:item.kind || 'fact',
+          time:item.date || dateText(dateNow()),
+          content:item.text || '',
+          name:item.name || '',
+          seq:item.seq || '',
+          _v67Key:k
+        });
+      }
+    }catch(e){}
+  }
+
+  /*
+   * 序列应用：
+   * 数字更小代表位阶更高。
+   *
+   * 防止：
+   * 序列5 -> 被旧序列6覆盖
+   */
+  function applySeq(ev,source){
+    var f = ensureFact(ev.name);
+    var r = ensureRel(ev.name);
+
+    if(!f || !r) return false;
+
+    if(ev.path){
+      if(!f.path || f.path === '凡俗'){
+        f.path = ev.path;
+      }
+
+      if(!r.path || r.path === '凡俗'){
+        r.path = f.path;
+      }
+    }
+
+    if(ev.seq === undefined) return false;
+
+    var n = Number(ev.seq);
+
+    if(!isFinite(n)) return false;
+
+    var changed = false;
+
+    if(
+      f.seqNum === 99 ||
+      n < f.seqNum
+    ){
+      f.seqNum = n;
+      f.seqText = seqText(n,ev.title || '');
+
+      r.seq = f.seqText;
+
+      changed = true;
+
+      var h = {
+        date:dateText({
+          y:ev.date[0],
+          m:ev.date[1],
+          d:ev.date[2]
+        }),
+        seq:f.seqText,
+        source:source || 'canon'
+      };
+
+      if(
+        !f.history.some(function(x){
+          return x &&
+            x.date === h.date &&
+            x.seq === h.seq;
+        })
+      ){
+        f.history.push(h);
+      }
+
+      remember({
+        kind:'promotion',
+        name:f.name,
+        date:h.date,
+        seq:f.seqText,
+        text:f.name + '晋升至' + f.seqText + '。'
+      });
+    }
+
+    /*
+     * 同序列但新标题为空时，补足标题。
+     */
+    if(f.seqNum === n){
+      f.seqText = f.seqText || seqText(n,ev.title || '');
+      r.seq = f.seqText;
+    }
+
+    if(f.path){
+      r.path = f.path;
+    }
+
+    return changed;
+  }
+
+  function syncFacts(){
+    if(!ensure()) return;
+
+    var now = dateNow();
+
+    if(!now) return;
+
+    blockBadNodes();
+
+    FACT_EVENTS.forEach(function(ev){
+
+      if(
+        !reached(
+          ev.date[0],
+          ev.date[1],
+          ev.date[2],
+          now,
+          ev.precision
+        )
+      ){
+        return;
+      }
+
+      if(ev.type === 'seq'){
+        applySeq(ev,'canon');
+        return;
+      }
+
+      if(ev.type === 'tarot'){
+        addTarotCanon(
+          ev.name,
+          ev.card,
+          ev.date
+        );
+      }
+
+    });
+  }
+
+  /*
+   * 塔罗会客观成员。
+   *
+   * 玩家是否见过，不决定成员是否存在。
+   */
+  var TAROT_CANON = [
+
+    {
+      date:[1349,6,28],
+      name:'克莱恩·莫雷蒂',
+      card:'愚者'
+    },
+
+    {
+      date:[1349,6,28],
+      name:'奥黛丽·霍尔',
+      card:'正义'
+    },
+
+    {
+      date:[1349,6,28],
+      name:'阿尔杰·威尔逊',
+      card:'倒吊人'
+    },
+
+    {
+      date:[1349,8,19],
+      name:'戴里克·伯格',
+      card:'太阳'
+    },
+
+    {
+      date:[1349,10,15],
+      name:'佛尔思·沃尔',
+      card:'魔术师'
+    },
+
+    {
+      date:[1349,12,28],
+      name:'埃姆林·怀特',
+      card:'月亮'
+    },
+
+    {
+      date:[1350,1,23],
+      name:'嘉德丽雅',
+      card:'隐者'
+    },
+
+    {
+      date:[1350,7,1],
+      name:'伦纳德·米切尔',
+      card:'星星'
+    },
+
+    {
+      date:[1350,7,2],
+      name:'休·迪尔查',
+      card:'审判'
+    }
+  ];
+
+  function addTarotCanon(name,card,dt){
+    var s = S();
+    var c = canon(name);
+
+    var r = ensureRel(c);
+    var f = ensureFact(c);
+
+    if(!s || !r || !f) return;
+
+    f.tarot = true;
+
+    if(card){
+      f.card = card;
+    }
+
+    if(
+      !f.joinDate &&
+      dt &&
+      dt[0] > 0 &&
+      dt[1] > 0 &&
+      dt[2] > 0
+    ){
+      f.joinDate = dateText({
+        y:dt[0],
+        m:dt[1],
+        d:dt[2]
+      });
+    }
+
+    r.faction = '塔罗会';
+
+    try{
+      var fac =
+        s.factions &&
+        s.factions['塔罗会'];
+
+      if(fac){
+
+        if(!Array.isArray(fac.members)){
+          fac.members = [];
+        }
+
+        if(fac.members.indexOf(c) < 0){
+          fac.members.push(c);
+        }
+      }
+    }catch(e){}
+  }
+
+  /*
+   * 玩家世界线导致NPC加入塔罗会。
+   *
+   * 注意：
+   * NPC加入 ≠ 玩家加入。
+   */
+  function addTarotPlayer(name,card,when){
+    if(!ensure()) return;
+
+    var s = S();
+    var c = canon(name);
+
+    if(!c) return;
+
+    s[TAROT_KEY][c] = {
+      name:c,
+      card:String(card || ''),
+      joinDate:when || dateText(dateNow()),
+      source:'player'
+    };
+
+    addTarotCanon(
+      c,
+      card,
+      [0,0,0]
+    );
+
+    var f = ensureFact(c);
+    var r = ensureRel(c);
+
+    f.tarot = true;
+
+    if(card){
+      f.card = String(card);
+    }
+
+    if(!f.joinDate){
+      f.joinDate =
+        when ||
+        dateText(dateNow());
+    }
+
+    r.faction = '塔罗会';
+
+    remember({
+      kind:'tarot_join',
+      name:c,
+      date:f.joinDate,
+      text:'【玩家世界线】' + c + '加入塔罗会。'
+    });
+  }
+
+  /*
+   * 获取当前所有客观塔罗会成员。
+   */
+  function tarotMembers(){
+    var s = S();
+    var now = dateNow();
+    var out = {};
+
+    if(!s || !now) return [];
+
+    TAROT_CANON.forEach(function(ev){
+
+      if(
+        reached(
+          ev.date[0],
+          ev.date[1],
+          ev.date[2],
+          now
+        )
+      ){
+        out[canon(ev.name)] = ev;
+      }
+
+    });
+
+    Object.keys(s[TAROT_KEY] || {}).forEach(function(n){
+
+      var x = s[TAROT_KEY][n];
+
+      out[n] = {
+        date:[0,0,0],
+        name:n,
+        card:x && x.card || '',
+        player:true
+      };
+
+    });
+
+    return Object.keys(out).map(function(n){
+
+      var f =
+        (s[FACT_KEY] || {})[n] || {};
+
+      var r =
+        (s.relations || {})[n] || {};
+
+      var ev = out[n];
+
+      return {
+        name:n,
+
+        card:
+          f.card ||
+          ev.card ||
+          '',
+
+        seq:
+          f.seqText ||
+          r.seq ||
+          '未知',
+
+        path:
+          f.path ||
+          r.path ||
+          '未知',
+
+        join:
+          f.joinDate ||
+          (
+            ev.player
+              ? '玩家分支'
+              : dateText({
+                  y:ev.date[0],
+                  m:ev.date[1],
+                  d:ev.date[2]
+                })
+          )
+      };
+    });
+  }
+
+  function branchId(x){
+    if(!x) return '';
+
+    if(x.eventId !== undefined){
+      return String(x.eventId);
+    }
+
+    if(x.timelineId !== undefined){
+      return String(x.timelineId);
+    }
+
+    if(x.id !== undefined){
+      return String(x.id);
+    }
+
+    if(x.index !== undefined){
+      return 'legacy:' + String(x.index);
+    }
+
+    return '';
+  }
+
+  /*
+   * 应用玩家改变过的世界线。
+   */
+  function applyBranch(x){
+    if(!ensure() || !x) return null;
+
+    if(x.success === false){
+      return null;
+    }
+
+    var id = branchId(x);
+
+    if(!id) return null;
+
+    var outcome =
+      String(
+        x.newOutcome ||
+        x.outcome ||
+        x.result ||
+        x.reason ||
+        '玩家成功改变该事件结果'
+      ).slice(0,600);
+
+    var s = S();
+
+    var b =
+      s[BRANCH_KEY][id] ||
+      {
+        id:id,
+        source:'player',
+        changedAt:dateText(dateNow())
+      };
+
+    b.outcome = outcome;
+
+    b.text =
+      '【玩家世界线】事件 ' +
+      id +
+      '：' +
+      outcome;
+
+    b.effects =
+      Array.isArray(x.effects)
+        ? clone(x.effects) || []
+        : (b.effects || []);
+
+    b.npcs =
+      Array.isArray(x.npcs)
+        ? clone(x.npcs) || []
+        : (b.npcs || []);
+
+    s[BRANCH_KEY][id] = b;
+
+    if(!s._worldTimelineLog[id]){
+      s._worldTimelineLog[id] = {};
+    }
+
+    s._worldTimelineLog[id].override = outcome;
+    s._worldTimelineLog[id]._v67Player = true;
+
+    /*
+     * 兼容旧 index。
+     */
+    if(x.index !== undefined){
+
+      var oldId = String(x.index);
+
+      if(!s._worldTimelineLog[oldId]){
+        s._worldTimelineLog[oldId] = {};
+      }
+
+      s._worldTimelineLog[oldId].override = outcome;
+      s._worldTimelineLog[oldId]._v67Player = true;
+    }
+
+    remember({
+      kind:'world_branch',
+      eventId:id,
+      date:b.changedAt,
+      text:b.text
+    });
+
+    /*
+     * 将世界线中的 NPC 效果同步到真实状态。
+     */
+    var effects =
+      b.effects.concat(
+        b.npcs || []
+      );
+
+    effects.forEach(function(e){
+
+      if(!e || !e.name) return;
+
+      var r = ensureRel(e.name);
+      var f = ensureFact(e.name);
+
+      if(e.path){
+        r.path = String(e.path);
+        f.path = String(e.path);
+      }
+
+      if(e.seq){
+
+        var n = seqNum(e.seq);
+
+        if(
+          n !== 99 &&
+          (
+            f.seqNum === 99 ||
+            n < f.seqNum
+          )
+        ){
+          f.seqNum = n;
+          f.seqText = String(e.seq);
+          r.seq = f.seqText;
+        }
+      }
+
+      if(e.status){
+        r.status = String(e.status);
+      }
+
+      if(e.location){
+        r.location = String(e.location);
+      }
+
+      if(e.faction){
+        r.faction = String(e.faction);
+      }
+
+      if(
+        e.tarotJoin ||
+        e.joinTarot ||
+        e.organization === '塔罗会' ||
+        e.faction === '塔罗会'
+      ){
+        addTarotPlayer(
+          e.name,
+          e.card,
+          b.changedAt
+        );
+      }
+
+    });
+
+    return b;
+  }
+
+  /*
+   * 读取AI结构化结果。
+   */
+  function consumeAI(data){
+    if(!data || !ensure()) return;
+
+    var sc = data.stateChanges || {};
+
+    var arr = [];
+
+    [
+      'worldBranch',
+      'overrideTimeline',
+      'canonOverride',
+      'branch'
+    ].forEach(function(k){
+
+      var v =
+        sc[k] !== undefined
+          ? sc[k]
+          : data[k];
+
+      if(Array.isArray(v)){
+        arr = arr.concat(v);
+      }else if(
+        v &&
+        typeof v === 'object'
+      ){
+        arr.push(v);
+      }
+
+    });
+
+    arr.forEach(applyBranch);
+
+    [
+      'tarotJoin',
+      'joinTarot'
+    ].forEach(function(k){
+
+      var v =
+        sc[k] !== undefined
+          ? sc[k]
+          : data[k];
+
+      if(Array.isArray(v)){
+
+        v.forEach(function(x){
+
+          if(x && x.name){
+
+            addTarotPlayer(
+              x.name,
+              x.card,
+              dateText(dateNow())
+            );
+
+          }
+
+        });
+
+      }else if(
+        v &&
+        typeof v === 'object' &&
+        v.name
+      ){
+
+        addTarotPlayer(
+          v.name,
+          v.card,
+          dateText(dateNow())
+        );
+      }
+
+    });
+
+    [
+      'npcUpdates',
+      'addRelation'
+    ].forEach(function(k){
+
+      var v =
+        data[k] ||
+        sc[k];
+
+      if(!Array.isArray(v)) return;
+
+      v.forEach(function(x){
+
+        if(
+          x &&
+          x.name &&
+          (
+            x.tarotJoin ||
+            x.joinTarot ||
+            x.organization === '塔罗会' ||
+            x.faction === '塔罗会'
+          )
+        ){
+
+          addTarotPlayer(
+            x.name,
+            x.card,
+            dateText(dateNow())
+          );
+
+        }
+
+      });
+
+    });
+
+    /*
+     * 只有明确 joinFaction 指向塔罗会时，
+     * 才把玩家本人标记为塔罗会成员。
+     */
+    if(
+      sc.joinFaction &&
+      String(sc.joinFaction).indexOf('塔罗会') >= 0
+    ){
+      try{
+
+        if(
+          S().factions &&
+          S().factions['塔罗会']
+        ){
+          S().factions['塔罗会'].joined = true;
+        }
+
+      }catch(e){}
+    }
+  }
+
+  /*
+   * 已知正式会议日期。
+   */
+  var KNOWN_MEETINGS = {
+
+    '1349-06-28':true,
+
+    '1349-07-02':true,
+
+    '1349-09-17':true,
+    '1349-09-24':true,
+    '1349-10-01':true,
+    '1349-10-08':true,
+    '1349-10-15':true,
+    '1349-10-22':true,
+    '1349-10-29':true,
+    '1349-11-05':true,
+    '1349-11-12':true,
+    '1349-11-19':true
+  };
+
+  /*
+   * 10月15日以后按每7天处理。
+   *
+   * 这里只做日期周期判断，
+   * 不改原游戏月份系统。
+   */
+  function weeklyMeeting(d){
+    if(!d) return false;
+
+    var anchor = {
+      y:1349,
+      m:10,
+      d:15
+    };
+
+    var a =
+      anchor.y * 360 +
+      (anchor.m - 1) * 30 +
+      (anchor.d - 1);
+
+    var b =
+      d.y * 360 +
+      (d.m - 1) * 30 +
+      (d.d - 1);
+
+    return (
+      b >= a &&
+      ((b - a) % 7 === 0)
+    );
+  }
+
+  function meetingToday(d){
+    var k = dateText(d);
+
+    return !!KNOWN_MEETINGS[k] ||
+      weeklyMeeting(d);
+  }
+
+  /*
+   * 玩家本人是否已经加入塔罗会。
+   *
+   * 与NPC加入塔罗会完全分开。
+   */
+  function playerInTarot(){
+    var s = S();
+
+    if(!s) return false;
+
+    try{
+      if(
+        s.factions &&
+        s.factions['塔罗会'] &&
+        s.factions['塔罗会'].joined
+      ){
+        return true;
+      }
+    }catch(e){}
+
+    return !!s._v67PlayerTarotJoined;
+  }
+
+  /*
+   * 塔罗会会议上下文。
+   *
+   * 核心规则：
+   * 成员是否认识玩家，与成员是否客观入席完全无关。
+   */
+  function meetingContext(){
+
+    var d = dateNow();
+
+    if(!d || !meetingToday(d)){
+      return '';
+    }
+
+    var members = tarotMembers();
+
+    var lines = [
+      '【V67·塔罗会正式会议事件】',
+      '当前日期属于塔罗会正式聚会时间。',
+      '塔罗会为每周一次的正式聚会；原著存在早期取消/调整，因此只有明确的会议日期或10月15日之后的每周周期才自动判定。',
+      '此次会议的客观成员如下：'
+    ];
+
+    members.forEach(function(m){
+
+      lines.push(
+        '- ' +
+        m.name +
+        '｜' +
+        (m.card || '无记录代号') +
+        '｜' +
+        m.seq +
+        '｜' +
+        m.path +
+        '｜加入 ' +
+        m.join
+      );
+
+    });
+
+    lines.push(
+      '正式会议场景中，已经加入塔罗会的成员必须在席。'
+    );
+
+    lines.push(
+      '玩家没有见过某成员，不影响该成员客观入席；只影响玩家此前是否认识他/她。'
+    );
+
+    if(playerInTarot()){
+
+      lines.push(
+        '玩家已加入塔罗会：本轮正文应优先处理召集、灰雾之上入席和会议，而不是跳过本次正式会议。'
+      );
+
+    }else{
+
+      lines.push(
+        '玩家尚未加入塔罗会：会议照常在世界后台发生，不强行让玩家出现在灰雾之上。'
+      );
+
+    }
+
+    return lines.join('\n');
+  }
+
+  /*
+   * 玩家世界线 + 当前塔罗会客观成员
+   * 注入到AI。
+   */
+  function branchContext(){
+
+    var s = S();
+    var out = [];
+
+    if(!s) return '';
+
+    Object.keys(
+      s[BRANCH_KEY] || {}
+    ).slice(-24).forEach(function(k){
+
+      var b = s[BRANCH_KEY][k];
+
+      if(b){
+
+        out.push(
+          '- ' +
+          (b.changedAt || '未知时间') +
+          '｜事件 ' +
+          b.id +
+          '｜已改变为：' +
+          b.outcome
+        );
+
+      }
+
+    });
+
+    var members = tarotMembers();
+
+    if(members.length){
+
+      out.push(
+        '【塔罗会当前客观成员】'
+      );
+
+      members.forEach(function(m){
+
+        out.push(
+          '- ' +
+          m.name +
+          '｜' +
+          (m.card || '未记录') +
+          '｜' +
+          m.seq +
+          '｜' +
+          m.path +
+          '｜加入 ' +
+          m.join
+        );
+
+      });
+    }
+
+    return out.join('\n');
+  }
+
+  /*
+   * 核心系统上下文。
+   *
+   * 不替换原提示词，只在API发送前补充。
+   */
+  function context(){
+
+    var lines = [
+
+      MARK,
+
+      '【V67权威NPC与世界线规则】',
+
+      '正确的原著节点继续推进；不要因为V67存在就暂停或重写正确事件。',
+
+      'V67只阻止已确认错误的旧节点，或玩家已经成功改变的节点。',
+
+      '玩家成功改变一个事件，只改变该事件；其他原著节点继续运行。',
+
+      'NPC序列遵守不可回档原则：更高位阶的当前序列优先，不能被旧低位阶资料覆盖。',
+
+      '后台NPC事实与玩家是否认识该NPC是两个独立系统。'
+    ];
+
+    var bc = branchContext();
+
+    if(bc){
+      lines.push(bc);
+    }
+
+    var mc = meetingContext();
+
+    if(mc){
+      lines.push(mc);
+    }
+
+    lines.push(
+
+      '【AI结构化要求】',
+
+      '若玩家真正改变原著事件，返回 stateChanges.worldBranch=[{eventId:"...",success:true,newOutcome:"..."}]；旧版 overrideTimeline/canonOverride 继续兼容。',
+
+      '若玩家让NPC提前加入塔罗会，返回 stateChanges.tarotJoin=[{name:"NPC姓名",card:"塔罗代号"}]。',
+
+      '正文明确写出可靠的NPC晋升时，也应在npcUpdates中报告name/path/seq。'
+    );
+
+    return lines.join('\n');
+  }
+
+  /*
+   * 给原API消息增加V67上下文。
+   *
+   * 不修改原消息对象本身，尽量降低副作用。
+   */
+  function patchMessages(msgs){
+
+    if(!Array.isArray(msgs)){
+      return msgs;
+    }
+
+    /*
+     * 防止重复注入。
+     */
+    if(
+      msgs.some(function(m){
+        return String(
+          (m && m.content) || ''
+        ).indexOf(MARK) >= 0;
+      })
+    ){
+      return msgs;
+    }
+
+    var p = context();
+
+    if(!p){
+      return msgs;
+    }
+
+    var out = msgs.map(function(m){
+
+      var x = {};
+
+      Object.keys(m || {}).forEach(function(k){
+        x[k] = m[k];
+      });
+
+      return x;
+    });
+
+    var added = false;
+    var i;
+
+    /*
+     * 优先追加到原有system。
+     */
+    for(i=0;i<out.length;i++){
+
+      if(
+        out[i] &&
+        out[i].role === 'system'
+      ){
+
+        out[i].content =
+          String(out[i].content || '') +
+          '\n\n' +
+          p;
+
+        added = true;
+        break;
+      }
+
+    }
+
+    /*
+     * 再把上下文放到最后一个user之后。
+     */
+    for(i=out.length-1;i>=0;i--){
+
+      if(
+        out[i] &&
+        out[i].role === 'user'
+      ){
+
+        out[i].content =
+          String(out[i].content || '') +
+          '\n\n' +
+          p;
+
+        break;
+      }
+
+    }
+
+    /*
+     * 完全没有system才新建。
+     */
+    if(!added){
+
+      out.unshift({
+        role:'system',
+        content:p
+      });
+
+    }
+
+    return out;
+  }
+
+  /*
+   * API最小挂钩。
+   *
+   * 原callAPI仍然执行。
+   */
+  function wrapAPI(){
+
+    if(
+      typeof window.callAPI === 'function' &&
+      !window.callAPI.__v67safe
+    ){
+
+      var oldCall = window.callAPI;
+
+      window.callAPI = async function(msgs,c){
+
+        try{
+
+          ensure();
+          blockBadNodes();
+          syncFacts();
+
+          msgs = patchMessages(msgs);
+
+        }catch(e){
+
+          console.warn(
+            '[V67] prompt层异常，原API继续',
+            e
+          );
+
+        }
+
+        return oldCall.apply(
+          this,
+          [msgs,c]
+        );
+      };
+
+      window.callAPI.__v67safe = true;
+    }
+  }
+
+  /*
+   * applyAI：
+   * 先执行原游戏逻辑，
+   * 再做V67附加同步。
+   *
+   * 这样V67失败也不应该阻断原系统。
+   */
+  function wrapApplyAI(){
+
+    if(
+      typeof window.applyAI === 'function' &&
+      !window.applyAI.__v67safe
+    ){
+
+      var oldApply = window.applyAI;
+
+      window.applyAI = function(data,action){
+
+        var before = dateNow();
+
+        /*
+         * 原游戏先处理。
+         */
+        var result =
+          oldApply.apply(
+            this,
+            arguments
+          );
+
+        /*
+         * V67附加逻辑。
+         */
+        try{
+
+          consumeAI(data);
+
+          blockBadNodes();
+
+          sanitizeLegacyV8();
+
+          syncFacts();
+
+          var after = dateNow();
+
+          var s = S();
+
+          /*
+           * 到达正式会议日时记录待处理标记。
+           */
+          if(
+            after &&
+            meetingToday(after)
+          ){
+            s._v67MeetingDue = true;
+          }
+
+          if(
+            before &&
+            after &&
+            keyDate(after) > keyDate(before)
+          ){
+
+            if(meetingToday(after)){
+              s._v67MeetingDue = true;
+            }
+
+          }
+
+          s[LAST_DATE_KEY] =
+            after
+              ? dateText(after)
+              : dateText(dateNow());
+
+        }catch(e){
+
+          console.warn(
+            '[V67] state层异常，原游戏结果保留',
+            e
+          );
+
+        }
+
+        return result;
+      };
+
+      window.applyAI.__v67safe = true;
+    }
+  }
+
+  /*
+   * 存档系统只附加V67数据。
+   * 不替换原存档结构。
+   */
+  function wrapSave(){
+
+    /*
+     * 保存。
+     */
+    if(
+      typeof window.buildSave === 'function' &&
+      !window.buildSave.__v67safe
+    ){
+
+      var oldBuild = window.buildSave;
+
+      window.buildSave = function(){
+
+        var out =
+          oldBuild.apply(
+            this,
+            arguments
+          );
+
+        try{
+
+          if(!out.system){
+            out.system = {};
+          }
+
+          out.system[FACT_KEY] =
+            clone(S()[FACT_KEY]);
+
+          out.system[BRANCH_KEY] =
+            clone(S()[BRANCH_KEY]);
+
+          out.system[MEMORY_KEY] =
+            clone(S()[MEMORY_KEY]);
+
+          out.system[TAROT_KEY] =
+            clone(S()[TAROT_KEY]);
+
+          out.system._v67MeetingDue =
+            !!S()._v67MeetingDue;
+
+        }catch(e){
+
+          console.warn(
+            '[V67] save附加数据失败',
+            e
+          );
+
+        }
+
+        return out;
+      };
+
+      window.buildSave.__v67safe = true;
+    }
+
+    /*
+     * 读取。
+     */
+    if(
+      typeof window.applySave === 'function' &&
+      !window.applySave.__v67safe
+    ){
+
+      var oldSave = window.applySave;
+
+      window.applySave = function(d){
+
+        var result =
+          oldSave.apply(
+            this,
+            arguments
+          );
+
+        try{
+
+          if(
+            d &&
+            d.system
+          ){
+
+            S()[FACT_KEY] =
+              d.system[FACT_KEY] ||
+              S()[FACT_KEY] ||
+              {};
+
+            S()[BRANCH_KEY] =
+              d.system[BRANCH_KEY] ||
+              S()[BRANCH_KEY] ||
+              {};
+
+            S()[MEMORY_KEY] =
+              d.system[MEMORY_KEY] ||
+              S()[MEMORY_KEY] ||
+              [];
+
+            S()[TAROT_KEY] =
+              d.system[TAROT_KEY] ||
+              S()[TAROT_KEY] ||
+              {};
+
+            S()._v67MeetingDue =
+              !!d.system._v67MeetingDue;
+          }
+
+          blockBadNodes();
+
+          sanitizeLegacyV8();
+
+          restoreBranches();
+
+          syncFacts();
+
+        }catch(e){
+
+          console.warn(
+            '[V67] load附加数据失败',
+            e
+          );
+
+        }
+
+        return result;
+      };
+
+      window.applySave.__v67safe = true;
+    }
+  }
+
+  /*
+   * 从存档恢复玩家世界线。
+   */
+  function restoreBranches(){
+
+    if(!ensure()) return;
+
+    var s = S();
+
+    Object.keys(
+      s[BRANCH_KEY] || {}
+    ).forEach(function(k){
+
+      var b =
+        s[BRANCH_KEY][k];
+
+      if(!b) return;
+
+      if(!s._worldTimelineLog[b.id]){
+        s._worldTimelineLog[b.id] = {};
+      }
+
+      s._worldTimelineLog[b.id].override =
+        b.outcome;
+
+      s._worldTimelineLog[b.id]._v67Player =
+        true;
+
+      (
+        b.effects || []
+      ).concat(
+        b.npcs || []
+      ).forEach(function(e){
+
+        if(!e || !e.name) return;
+
+        var r = ensureRel(e.name);
+        var f = ensureFact(e.name);
+
+        if(e.path){
+          r.path = String(e.path);
+          f.path = String(e.path);
+        }
+
+        if(e.seq){
+
+          var n = seqNum(e.seq);
+
+          if(
+            n !== 99 &&
+            (
+              f.seqNum === 99 ||
+              n < f.seqNum
+            )
+          ){
+
+            f.seqNum = n;
+            f.seqText = String(e.seq);
+            r.seq = f.seqText;
+
+          }
+        }
+
+        if(e.status){
+          r.status = String(e.status);
+        }
+
+        if(e.location){
+          r.location = String(e.location);
+        }
+
+        /*
+         * 恢复玩家改变后的塔罗会成员。
+         */
+        if(
+          e.tarotJoin ||
+          e.joinTarot ||
+          e.organization === '塔罗会' ||
+          e.faction === '塔罗会'
+        ){
+
+          addTarotPlayer(
+            e.name,
+            e.card,
+            b.changedAt
+          );
+
+        }
+
+      });
+
+    });
+
+    /*
+     * 恢复单独保存的玩家世界线塔罗成员。
+     */
+    Object.keys(
+      s[TAROT_KEY] || {}
+    ).forEach(function(n){
+
+      var t = s[TAROT_KEY][n];
+
+      addTarotCanon(
+        n,
+        t && t.card,
+        [0,0,0]
+      );
+
+      var f = ensureFact(n);
+
+      if(
+        t &&
+        t.joinDate &&
+        !f.joinDate
+      ){
+        f.joinDate = t.joinDate;
+      }
+
+      f.tarot = true;
+    });
+  }
+
+  /*
+   * 调试：
+   * 浏览器控制台输入：
+   * v67Check()
+   */
+  window.v67Check = function(){
+
+    ensure();
+    syncFacts();
+
+    return {
+      facts:clone(
+        S()[FACT_KEY]
+      ),
+
+      tarot:
+        tarotMembers(),
+
+      branches:
+        clone(
+          S()[BRANCH_KEY]
+        ),
+
+      memory:
+        clone(
+          S()[MEMORY_KEY]
+        ),
+
+      meetingDue:
+        !!S()._v67MeetingDue
+    };
+  };
+
+  /*
+   * 调试：
+   * v67AddTarot("莎伦")
+   *
+   * 只让指定NPC加入塔罗会。
+   * 不会把玩家本人自动加入塔罗会。
+   */
+  window.v67AddTarot = function(name){
+
+    addTarotPlayer(
+      name,
+      '',
+      dateText(dateNow())
+    );
+
+    return canon(name);
+  };
+
+  /*
+   * 调试：
+   * v67AddBranch("事件ID","玩家改变后的结果")
+   */
+  window.v67AddBranch = function(
+    eventId,
+    outcome
+  ){
+
+    return applyBranch({
+      eventId:eventId,
+      success:true,
+      newOutcome:outcome
+    });
+  };
+
+  /*
+   * 调试：
+   * v67TarotMeeting()
+   */
+  window.v67TarotMeeting = function(){
+
+    return tarotMembers();
+  };
+
+  /*
+   * 安全启动。
+   */
+  function boot(){
+
+    try{
+
+      if(!ensure()){
+        return false;
+      }
+
+      /*
+       * 先处理错误节点。
+       */
+      blockBadNodes();
+
+      sanitizeLegacyV8();
+
+      /*
+       * 同步客观事实。
+       */
+      syncFacts();
+
+      /*
+       * 只挂必要的几个点：
+       * callAPI
+       * applyAI
+       * buildSave
+       * applySave
+       *
+       * 不碰：
+       * renderUI
+       * bindAll
+       * DOM
+       * Proxy
+       * defineProperty
+       * document.write
+       */
+      wrapAPI();
+
+      wrapApplyAI();
+
+      wrapSave();
+
+      console.log(
+        '%c[V67] SAFE FINAL 已启动',
+        'color:#7c3aed;font-weight:700'
+      );
+
+      return true;
+
+    }catch(e){
+
+      /*
+       * V67自身失败：
+       * 原游戏仍保持。
+       */
+      console.warn(
+        '[V67] 启动保护：模块未挂载，原游戏保持不变',
+        e
+      );
+
+      return true;
+    }
+  }
+
+  /*
+   * 如果原游戏加载顺序导致 state / API 还没出现，
+   * 每250ms尝试一次，最多40次。
+   */
+  if(!boot()){
+
+    var tries = 0;
+
+    var timer =
+      setInterval(function(){
+
+        tries++;
+
+        if(
+          boot() ||
+          tries > 40
+        ){
+          clearInterval(timer);
+        }
+
+      },250);
+  }
+
+})();
 </script>
 </body>
 </html>
