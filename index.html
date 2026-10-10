@@ -26470,6 +26470,853 @@ console.log(
 
 })();
 /* ▲▲▲ V68 结束 ▲▲▲ */
+/* ▼▼▼ V70 · 完整回退/重生成、存档隔离、NPC晋升校验、SAN修复 ▼▼▼ */
+(function(){
+  'use strict';
+  if (window.__V70_FULL_RECOVERY__) return;
+  window.__V70_FULL_RECOVERY__ = true;
+
+  function cloneValue(value, seen, copies){
+    if (value === null || typeof value !== 'object') return value;
+    seen = seen || []; copies = copies || [];
+    var at = seen.indexOf(value);
+    if (at >= 0) return copies[at];
+    var out;
+    if (Array.isArray(value)) out = [];
+    else if (value instanceof Date) return new Date(value.getTime());
+    else out = Object.create(Object.getPrototypeOf(value) === null ? null : Object.prototype);
+    seen.push(value); copies.push(out);
+    Object.keys(value).forEach(function(k){ out[k] = cloneValue(value[k], seen, copies); });
+    return out;
+  }
+  function cloneSaveMap(map){
+    var out = {};
+    if (!map || typeof map !== 'object') return out;
+    Object.keys(map).forEach(function(k){ out[k] = cloneValue(map[k]); });
+    return out;
+  }
+  function finiteNum(v){
+    if (v === null || v === undefined || v === '') return null;
+    var n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  }
+  function seqNumber(v){
+    var m = String(v == null ? '' : v).match(/序列\s*([0-9])/);
+    if (m) return Number(m[1]);
+    if (/天使之王/.test(String(v||''))) return 1;
+    if (/真神|序列0/.test(String(v||''))) return 0;
+    return 99;
+  }
+  function escapeRe(s){ return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+  function stripMarkup(s){
+    return String(s == null ? '' : s).replace(/<[^>]*>/g,' ').replace(/&nbsp;/g,' ').replace(/&quot;/g,'"').replace(/&#39;/g,"'").replace(/&amp;/g,'&');
+  }
+  function parseDate(s){
+    s = String(s || '');
+    var m = s.match(/(\d{4})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日/);
+    if (m) return {y:+m[1],m:+m[2],d:+m[3]};
+    m = s.match(/(\d{4})[-\/]([0-9]{1,2})[-\/]([0-9]{1,2})/);
+    if (m) return {y:+m[1],m:+m[2],d:+m[3]};
+    m = s.match(/(\d{4})\s*年\s*(\d{1,2})\s*月\s*(上旬|中旬|下旬|月底|月末|月初)?/);
+    if (m) return {y:+m[1],m:+m[2],d:/下旬|月底|月末/.test(m[3]||'')?28:(/中旬/.test(m[3]||'')?15:1)};
+    return null;
+  }
+  function dateKey(d){ return d ? d.y*10000+d.m*100+d.d : 0; }
+  function audreyExpectedSeq(time){
+    var d = parseDate(time), k = dateKey(d);
+    if (!k) return null;
+    if (k >= 13501222) return 4;
+    if (k >= 13501007) return 5;
+    if (k >= 13500112) return 7;
+    if (k >= 13490917) return 8;
+    return 9;
+  }
+  function npcAliases(name){
+    var n = String(name||'');
+    if (/奥黛丽/.test(n)) return ['奥黛丽·霍尔','奥黛丽'];
+    if (/克莱恩/.test(n)) return ['克莱恩·莫雷蒂','克莱恩'];
+    if (/阿尔杰/.test(n)) return ['阿尔杰·威尔逊','阿尔杰'];
+    if (/戴里克/.test(n)) return ['戴里克·伯格','戴里克'];
+    if (/埃姆林/.test(n)) return ['埃姆林·怀特','埃姆林'];
+    if (/佛尔思/.test(n)) return ['佛尔思·沃尔','佛尔思'];
+    if (/伦纳德/.test(n)) return ['伦纳德·米切尔','伦纳德'];
+    if (/嘉德丽雅/.test(n)) return ['嘉德丽雅'];
+    if (/苏茜/.test(n)) return ['苏茜'];
+    if (/莎伦/.test(n)) return ['莎伦'];
+    if (/休/.test(n)) return ['休·迪尔查','休'];
+    return [n];
+  }
+  function playerSelfClaimToNpc(sentence, pos, alias){
+    var before = sentence.slice(0,pos), after = sentence.slice(pos + alias.length);
+    var seqPos = sentence.search(/序列\s*[0-9]/);
+    if (seqPos >= 0 && seqPos < pos && /(?:^|[，,：:；;])\s*(?:我|你|玩家|主角)[^。！？\n]{0,20}$/.test(sentence.slice(0,seqPos))) return true;
+    var playerPrefix = /(?:^|[，,；;])\s*(?:你|我|玩家|主角)[^。！？\n]{0,18}$/.test(before);
+    var selfClaimAfterName = /^[^。！？\n]{0,14}[：:，,、“"「]?\s*(?:我|玩家|主角|你本人|你)[^。！？\n]{0,24}(?:序列\s*[0-9]|晋升|提升|突破|进阶|成为|已经是|现在是)/.test(after);
+    var npcOwnSpeech = /^(?:[，,；;、]\s*)?(?:她|他|奥黛丽(?:·霍尔)?|克莱恩(?:·莫雷蒂)?|阿尔杰(?:·威尔逊)?|戴里克(?:·伯格)?|埃姆林(?:·怀特)?|佛尔思(?:·沃尔)?|伦纳德(?:·米切尔)?|休(?:·迪尔查)?)\s*(?:说|表示|回答|回应|解释道|告诉你)[：:，“"「]/.test(after);
+    return playerPrefix && selfClaimAfterName && !npcOwnSpeech;
+  }
+  function textFromState(s){
+    if (!s) return '';
+    var parts = [];
+    (Array.isArray(s.log) ? s.log.slice(-1200) : []).forEach(function(e){ if(e) parts.push(stripMarkup(e.content || e.text || '')); });
+    (Array.isArray(s.memoryEntries) ? s.memoryEntries.slice(-500) : []).forEach(function(e){ if(e) parts.push(stripMarkup(e.rawText || (e.events||[]).join('；') || e.text || '')); });
+    (Array.isArray(s.worldEvents) ? s.worldEvents.slice(-300) : []).forEach(function(e){ if(e) parts.push(stripMarkup(e.desc || e.text || '')); });
+    if (s._v67SafeBranches) parts.push(stripMarkup(JSON.stringify(s._v67SafeBranches)));
+    return parts.join('\n');
+  }
+  function textFromSave(save){
+    var sys = save && save.system || {};
+    var parts = [];
+    var logs = Array.isArray(sys.log) ? sys.log : (Array.isArray(sys.logTail) ? sys.logTail : []);
+    logs.slice(-1200).forEach(function(e){ if(e) parts.push(stripMarkup(e.content || e.text || '')); });
+    var mem = Array.isArray(sys.memoryEntries) ? sys.memoryEntries : [];
+    mem.slice(-500).forEach(function(e){ if(e) parts.push(stripMarkup(e.rawText || (e.events||[]).join('；') || e.text || '')); });
+    var worlds = save && save.world && save.world.worldEvents || [];
+    if (Array.isArray(worlds)) worlds.slice(-300).forEach(function(e){ if(e) parts.push(stripMarkup(e.desc || e.text || '')); });
+    if (sys._v67SafeBranches) parts.push(stripMarkup(JSON.stringify(sys._v67SafeBranches)));
+    return parts.join('\n');
+  }
+  function explicitNpcPromotion(text, name, targetSeq){
+    text = stripMarkup(text);
+    var aliases = npcAliases(name), target = Number(targetSeq);
+    if (!Number.isFinite(target) || target < 0 || target > 9) return false;
+    var seqRe = '序列\\s*' + target + '(?![0-9])';
+    var verbRe = '(?:晋升(?:至|为|到)?|提升(?:至|为|到)?|突破(?:至|到)?|进阶至|进阶为|晋级至|晋级为|成为|已经是|现在是|目前是|如今是|已是|现为|服下[^。！？\\n]{0,10}魔药后(?:晋升|成为|达到)?|成功达到|正式达到|已经晋升至|现在晋升至|已晋升至)';
+    var sentences = text.split(/[。！？!\n]+/);
+    for (var si=0; si<sentences.length; si++){
+      var sentence = sentences[si];
+      for (var ai=0; ai<aliases.length; ai++){
+        var alias = aliases[ai], pos = 0;
+        while ((pos = sentence.indexOf(alias, pos)) >= 0){
+          var tail = sentence.slice(pos + alias.length, pos + alias.length + 64);
+          var re = new RegExp('^([^。！？\\n]{0,34}?)' + verbRe + '[^。！？\\n]{0,24}?' + seqRe);
+          var m = tail.match(re);
+          if (m){
+            if (playerSelfClaimToNpc(sentence,pos,alias)) { pos += alias.length; continue; }
+            return true;
+          }
+          pos += alias.length;
+        }
+      }
+    }
+    return false;
+  }
+  function npcProgressionContext(text, name){
+    text = stripMarkup(text);
+    var aliases = npcAliases(name);
+    var sentences = text.split(/[。！？!\n]+/);
+    var progress = /(?:成功|正式|顺利|最终|已经|已然|终于)?(?:晋升(?:至|为|到)|提升(?:至|为|到)|突破(?:至|为|到)?|进阶(?:至|为|到)?|晋级(?:至|为|到)?)|服下[^，,。！？]{0,12}魔药后[^，,。！？]{0,18}(?:晋升|突破|进阶|达到序列)|完成[^，,。！？]{0,10}晋升仪式/;
+    for (var si=0; si<sentences.length; si++){
+      var sentence = sentences[si];
+      var pm = progress.exec(sentence);
+      if (!pm) continue;
+      var progressPos = pm.index;
+      for (var ai=0; ai<aliases.length; ai++){
+        var alias = aliases[ai], pos = sentence.indexOf(alias);
+        if (pos < 0) continue;
+        if (progressPos < pos + alias.length || progressPos - (pos + alias.length) > 72) continue;
+        var seqPos = sentence.search(/序列\s*[0-9]/);
+        if (seqPos >= 0 && pos > seqPos && /(?:我|你|玩家|主角)[^。！？]{0,24}(?:晋升|提升|突破|进阶|序列\s*[0-9])/.test(sentence.slice(0,pos))) continue;
+        if (playerSelfClaimToNpc(sentence,pos,alias)) continue;
+        return true;
+      }
+    }
+    return false;
+  }
+  function progressionTargetsForNpc(text,name){
+    text = stripMarkup(text);
+    var aliases = npcAliases(name), sentences = text.split(/[。！？!\n]+/), targets = [];
+    var progress = /(?:成功|正式|顺利|最终|已经|已然|终于)?(?:晋升(?:至|为|到)|提升(?:至|为|到)|突破(?:至|为|到)?|进阶(?:至|为|到)?|晋级(?:至|为|到)?)|服下[^，,。！？]{0,12}魔药后[^，,。！？]{0,18}(?:晋升|突破|进阶|达到序列)|完成[^，,。！？]{0,10}晋升仪式/;
+    sentences.forEach(function(sentence){
+      var pm = progress.exec(sentence); if(!pm) return;
+      var progressPos = pm.index, relevant = false;
+      aliases.some(function(alias){
+        var pos = sentence.indexOf(alias);
+        if(pos < 0 || progressPos < pos + alias.length || progressPos - (pos + alias.length) > 72) return false;
+        if(playerSelfClaimToNpc(sentence,pos,alias)) return false;
+        relevant = true; return true;
+      });
+      if(!relevant) return;
+      var re = /序列\s*([0-9])(?![0-9])/g, m;
+      while((m = re.exec(sentence)) !== null) targets.push(Number(m[1]));
+    });
+    return targets;
+  }
+  function npcPromotionSupported(text, name, targetSeq, previousSeq){
+    if (explicitNpcPromotion(text,name,targetSeq)) return true;
+    var target = Number(targetSeq), previous = Number(previousSeq);
+    var statedTargets = progressionTargetsForNpc(text,name);
+    if (statedTargets.length) return statedTargets.indexOf(target) >= 0;
+    if (Number.isFinite(previous) && previous !== 99 && Number.isFinite(target) && target < previous && previous - target !== 1) return false;
+    return npcProgressionContext(text,name);
+  }
+  function setStateObject(source){
+    if (!source || typeof source !== 'object') return false;
+    Object.keys(state).forEach(function(k){ try{ delete state[k]; }catch(e){} });
+    Object.keys(source).forEach(function(k){ state[k] = cloneValue(source[k]); });
+    return true;
+  }
+
+  function deriveMaxSanity(s){
+    var mult = 1;
+    if (s && s.sourceResonance && Object.keys(s.sourceResonance).length) mult *= 1.2;
+    if (s && s.sourceHeld && Object.keys(s.sourceHeld).length) mult *= 1.3;
+    if (s && s.ascended && Object.keys(s.ascended).length) mult *= 10;
+    return Math.max(1,Math.round(100 * mult));
+  }
+  function statRecord(s){
+    if (!s || typeof s !== 'object') return null;
+    var max = finiteNum(s.maxSanity), sanity = finiteNum(s.sanity);
+    if (max === null || max <= 1 || sanity === null || sanity < 0 || sanity > max) return null;
+    return {sanity:sanity,maxSanity:max,path:String(s.path||''),seq:String(s.seq||''),name:String((s.meta&&s.meta.playerName)||s.playerName||'')};
+  }
+  function stateSignature(s){
+    return [String((s.meta&&s.meta.playerName)||s.playerName||''),String(s.path||''),String(s.seq||'')].join('|');
+  }
+  function repairSanityObject(s, fallback){
+    if (!s || typeof s !== 'object') return false;
+    var changed = false, max = finiteNum(s.maxSanity), san = finiteNum(s.sanity);
+    var badMax = max === null || max <= 1;
+    var last = s._v70LastGoodStats;
+    var sig = stateSignature(s);
+    if (last && last.signature && last.signature !== sig) last = null;
+    if (!last && fallback && fallback.signature === sig) last = fallback;
+    if (badMax){
+      var chosen = last && finiteNum(last.maxSanity) > 1 ? last : null;
+      var fallbackMax = chosen ? Number(chosen.maxSanity) : deriveMaxSanity(s);
+      if (san === null || san < 0 || san === 1){
+        s.sanity = chosen && finiteNum(chosen.sanity) !== null ? Number(chosen.sanity) : 100;
+        changed = true;
+      } else if (san > fallbackMax){
+        fallbackMax = san;
+      }
+      s.maxSanity = Math.max(100, fallbackMax, finiteNum(s.sanity) || 0);
+      changed = true;
+    } else {
+      s.maxSanity = max;
+      if (san === null || san < 0){ s.sanity = max; changed = true; }
+      else if (san > max){ s.sanity = max; changed = true; }
+      else s.sanity = san;
+    }
+    var good = statRecord(s);
+    if (good){
+      s._v70LastGoodStats = {sanity:good.sanity,maxSanity:good.maxSanity,path:good.path,seq:good.seq,name:good.name,signature:stateSignature(s)};
+    }
+    return changed;
+  }
+  function ledgerEntry(map, canonical){
+    if (!map || typeof map !== 'object') return null;
+    if (map[canonical]) return {key:canonical,value:map[canonical]};
+    var aliases = npcAliases(canonical), keys = Object.keys(map);
+    for (var i=0;i<keys.length;i++){
+      if (aliases.some(function(a){ return String(keys[i]).indexOf(a) >= 0 || a.indexOf(String(keys[i])) >= 0; })) return {key:keys[i],value:map[keys[i]]};
+    }
+    return null;
+  }
+  function timelineOverrideExists(s){
+    var tl = s && s._worldTimelineLog || {};
+    return Object.keys(tl).some(function(k){
+      return /audrey|奥黛丽/i.test(k) && tl[k] && tl[k].override;
+    });
+  }
+  function repairAudreyObject(s, evidenceText){
+    if (!s || typeof s !== 'object') return false;
+    var expected = audreyExpectedSeq(s.time), changed = false;
+    if (expected === null) return false;
+    var rels = s.relations || {}, keys = Object.keys(rels).filter(function(k){ return /奥黛丽/.test(k); });
+    var factMap = s._v58NpcFacts || {};
+    var factItem = ledgerEntry(factMap,'奥黛丽·霍尔');
+    var currentSeq = 99, rel = null;
+    keys.forEach(function(k){ if (!rel && rels[k]) { rel = rels[k]; currentSeq = seqNumber(rels[k].seq); } });
+    if (currentSeq === 99 && factItem && factItem.value) currentSeq = Number(factItem.value.seqNum);
+    if (currentSeq === 99) return false;
+    if (currentSeq >= expected) return false;
+    if (explicitNpcPromotion(evidenceText,'奥黛丽·霍尔',currentSeq) || npcProgressionContext(evidenceText,'奥黛丽·霍尔') || timelineOverrideExists(s)) return false;
+    var seqName = expected === 9 ? '观众' : expected === 8 ? '读心者' : expected === 7 ? '心理医生' : expected === 5 ? '梦境行者' : '操纵师';
+    var seqText = '序列' + expected + '·' + seqName;
+    keys.forEach(function(k){ if (rels[k]) { rels[k].path = '观众'; rels[k].seq = seqText; } });
+    if (!s._v58NpcFacts || typeof s._v58NpcFacts !== 'object') s._v58NpcFacts = {};
+    Object.keys(s._v58NpcFacts).forEach(function(k){ if (/奥黛丽/.test(k)) delete s._v58NpcFacts[k]; });
+    s._v58NpcFacts['奥黛丽·霍尔'] = {seqNum:expected,seqText:seqText,path:'观众',seqSource:'v70-repair'};
+    if (s._v67SafeFacts && typeof s._v67SafeFacts === 'object'){
+      Object.keys(s._v67SafeFacts).forEach(function(k){
+        if (/奥黛丽/.test(k) && s._v67SafeFacts[k] && typeof s._v67SafeFacts[k] === 'object'){
+          s._v67SafeFacts[k].path = '观众'; s._v67SafeFacts[k].seqNum = expected; s._v67SafeFacts[k].seqText = seqText;
+        }
+      });
+      if (s._v67SafeFacts['奥黛丽·霍尔']) {
+        s._v67SafeFacts['奥黛丽·霍尔'].path = '观众';
+        s._v67SafeFacts['奥黛丽·霍尔'].seqNum = expected;
+        s._v67SafeFacts['奥黛丽·霍尔'].seqText = seqText;
+      }
+    }
+    changed = true;
+    return changed;
+  }
+  function repairStateObject(s, fallback){
+    if (!s || typeof s !== 'object') return false;
+    var changed = repairSanityObject(s, fallback);
+    var evidence = textFromState(s);
+    if (repairAudreyObject(s,evidence)) changed = true;
+    return changed;
+  }
+  function extractSaveStats(save){
+    if (!save || typeof save !== 'object') return null;
+    if (save.__v70State) {
+      var st = statRecord(save.__v70State);
+      if (st) { st.signature = stateSignature(save.__v70State); return st; }
+    }
+    var c = save.char || {};
+    var st2 = statRecord({sanity:c.sanity,maxSanity:c.maxSanity,path:c.path,seq:c.seq,playerName:save.meta&&save.meta.name});
+    if (st2) st2.signature = [String((save.meta&&save.meta.name)||''),String(c.path||''),String(c.seq||'')].join('|');
+    return st2;
+  }
+  function compatibleStatsForSave(save, collection){
+    var targetName = String(save && save.meta && save.meta.name || '');
+    var targetChar = save && save.char || {};
+    var targetSig = [targetName,String(targetChar.path||''),String(targetChar.seq||'')].join('|');
+    var exactTime = String(save && save.meta && save.meta.time || '');
+    var candidates = [];
+    Object.keys(collection||{}).forEach(function(k){
+      var other = collection[k]; if (!other || other === save) return;
+      var st = extractSaveStats(other); if (!st) return;
+      if (st.signature !== targetSig || (st.name && targetName && st.name !== targetName)) return;
+      var sameTime = String(other.meta && other.meta.time || '') === exactTime;
+      var sameSavedAt = String(other.meta && other.meta.savedAt || '') === String(save.meta && save.meta.savedAt || '');
+      if (sameTime && sameSavedAt) candidates.push({stats:st,stamp:String(other.meta&&other.meta.savedAt||'')});
+    });
+    candidates.sort(function(a,b){ return b.stamp.localeCompare(a.stamp); });
+    if (!candidates.length) return null;
+    var x = candidates[0].stats;
+    return {sanity:x.sanity,maxSanity:x.maxSanity,path:x.path,seq:x.seq,name:x.name,signature:targetSig};
+  }
+  function mirrorStateToSave(save, s){
+    if (!save || !s) return;
+    save.meta = save.meta || {};
+    save.meta.name = (s.meta && s.meta.playerName) || save.meta.name || '';
+    save.meta.time = s.time || save.meta.time || '';
+    save.char = save.char || {};
+    ['appearance','avatar','identity','residence','hp','maxHp','mp','maxMp','sp','maxSp','sanity','maxSanity','path','seq','digest','abilities','equip','sealed','bag','houses','money','currency'].forEach(function(k){ if (s[k] !== undefined) save.char[k] = cloneValue(s[k]); });
+    save.social = save.social || {};
+    if (s.relations !== undefined) save.social.relations = cloneValue(s.relations);
+    save.world = save.world || {};
+    if (s.worldEvents !== undefined) save.world.worldEvents = cloneValue(s.worldEvents);
+    if (s.sourceQualities !== undefined) save.world.sourceQualities = cloneValue(s.sourceQualities);
+    save.system = save.system || {};
+    ['memory','recipes','memoryEntries','memoryIndex','_v58NpcFacts','_v64ItemMeta','_v64Facts','_v64Memory','_v67SafeFacts','_v67SafeBranches','_v67SafeMemory','_v67SafeTarot','_v67SafeLastDate','_v67MeetingDue','_worldTimelineLog'].forEach(function(k){ if(s[k] !== undefined){ save.system[k] = cloneValue(s[k]); } });
+    if (Array.isArray(s.log)) { save.system.logTail = cloneValue(s.log.slice(-500)); save.system.logTotal = s.log.length; }
+  }
+  function repairSavedRecord(save, collection){
+    if (!save || typeof save !== 'object') return false;
+    var changed = false, fallback = null;
+    if (save.__v70State && typeof save.__v70State === 'object'){
+      if (repairStateObject(save.__v70State, fallback)) changed = true;
+      mirrorStateToSave(save,save.__v70State);
+      return changed;
+    }
+    var c = save.char || (save.char = {});
+    var m = finiteNum(c.maxSanity), n = finiteNum(c.sanity);
+    if (m === null || m <= 1){
+      var sig = [String(save.meta&&save.meta.name||''),String(c.path||''),String(c.seq||'')].join('|');
+      if (fallback && fallback.signature === sig){ c.maxSanity = Math.max(100,fallback.maxSanity); if(n === null || n === 1 || n < 0) c.sanity = fallback.sanity; else c.sanity = n; }
+      else { c.maxSanity = Math.max(100,n !== null && n > 1 ? n : 100); if(n === null || n === 1 || n < 0) c.sanity = 100; else c.sanity = n; }
+      changed = true;
+    } else {
+      c.maxSanity = m;
+      if(n === null || n < 0){ c.sanity = m; changed = true; }
+      else if(n > m){ c.sanity = m; changed = true; }
+      else c.sanity = n;
+    }
+    var sys = save.system || (save.system = {});
+    var relations = save.social && save.social.relations || {};
+    var temp = {time:save.meta&&save.meta.time,relations:relations,_v58NpcFacts:sys._v58NpcFacts,_v67SafeFacts:sys._v67SafeFacts,_v67SafeBranches:sys._v67SafeBranches,worldEvents:save.world&&save.world.worldEvents,log:(sys.log||sys.logTail||[]),memoryEntries:sys.memoryEntries};
+    if (repairAudreyObject(temp,textFromSave(save))){
+      if(save.social) save.social.relations = temp.relations;
+      sys._v58NpcFacts = temp._v58NpcFacts;
+      if(temp._v67SafeFacts) sys._v67SafeFacts = temp._v67SafeFacts;
+      changed = true;
+    }
+    return changed;
+  }
+  function repairSavedCollection(collection){
+    var out = cloneSaveMap(collection), changed = false;
+    Object.keys(out).forEach(function(k){ if(repairSavedRecord(out[k],out)) changed = true; });
+    return {saves:out,changed:changed};
+  }
+
+  function restoreNpcLedger(mapName, canonical, oldMap){
+    if (!state[mapName] || typeof state[mapName] !== 'object') state[mapName] = {};
+    var map = state[mapName], aliases = npcAliases(canonical);
+    function matches(k){ return String(k) === canonical || aliases.some(function(a){ return String(k).indexOf(a) >= 0 || a.indexOf(String(k)) >= 0; }); }
+    Object.keys(map).forEach(function(k){ if (matches(k)) delete map[k]; });
+    if (oldMap && typeof oldMap === 'object'){
+      Object.keys(oldMap).forEach(function(k){ if (matches(k)) map[k] = cloneValue(oldMap[k]); });
+    }
+  }
+  function explicitPromotionInData(data, name, seq){
+    var text = data && data.narrative ? [data.narrative.scene,data.narrative.result,data.narrative.world].filter(Boolean).join('\n') : '';
+    if (explicitNpcPromotion(text,name,seq)) return true;
+    var sc = data && data.stateChanges || {};
+    var overrides = [];
+    if (Array.isArray(sc.canonOverride)) overrides = overrides.concat(sc.canonOverride);
+    if (Array.isArray(sc.overrideTimeline)) overrides = overrides.concat(sc.overrideTimeline);
+    return overrides.some(function(x){ return x && explicitNpcPromotion(String(x.newOutcome||'') + ' ' + String(x.note||''),name,seq); });
+  }
+  function milestoneJustApplied(beforeLog, afterLog, name){
+    var personIds = {
+      '奥黛丽·霍尔':['audrey','core'], '克莱恩·莫雷蒂':['klein'], '阿尔杰·威尔逊':['alger','core'],
+      '戴里克·伯格':['derrick','core'], '埃姆林·怀特':['emlyn'], '佛尔思·沃尔':['core'],
+      '伦纳德·米切尔':['leonard'], '嘉德丽雅':['cattleya'], '苏茜':['susie','core'], '莎伦':['core'], '休·迪尔查':['xio']
+    };
+    var canonical = /奥黛丽/.test(name)?'奥黛丽·霍尔':(/克莱恩/.test(name)?'克莱恩·莫雷蒂':(/阿尔杰/.test(name)?'阿尔杰·威尔逊':(/戴里克/.test(name)?'戴里克·伯格':(/埃姆林/.test(name)?'埃姆林·怀特':(/佛尔思/.test(name)?'佛尔思·沃尔':(/伦纳德/.test(name)?'伦纳德·米切尔':(/嘉德丽雅/.test(name)?'嘉德丽雅':(/苏茜/.test(name)?'苏茜':(/莎伦/.test(name)?'莎伦':(/休/.test(name)?'休·迪尔查':name))))))))));
+    var allowed = personIds[canonical] || [];
+    var oldL = beforeLog || {}, newL = afterLog || {};
+    return Object.keys(newL).some(function(id){
+      var now = newL[id], old = oldL[id];
+      if (!now || !now.v58Applied || (old && old.v58Applied)) return false;
+      return allowed.some(function(token){ return String(id).toLowerCase().indexOf(token) >= 0; });
+    });
+  }
+  function sanitizeNarrativeForFactParser(rawText){
+    var safe = String(rawText || ''), names = ['奥黛丽·霍尔','奥黛丽','克莱恩·莫雷蒂','克莱恩','阿尔杰·威尔逊','阿尔杰','戴里克·伯格','戴里克','埃姆林·怀特','埃姆林','佛尔思·沃尔','佛尔思','伦纳德·米切尔','伦纳德','嘉德丽雅','苏茜','莎伦','休·迪尔查','休'];
+    names.sort(function(a,b){ return b.length-a.length; });
+    for (var ni=0; ni<names.length; ni++){
+      var name = names[ni], pos = 0;
+      while ((pos = safe.indexOf(name,pos)) >= 0){
+        var leftStart = Math.max(0,pos-28), left = safe.slice(leftStart,pos);
+        var m, re = /序列\s*[0-9](?![0-9])[^。！？\n，、]{0,8}$/g;
+        while ((m = re.exec(left)) !== null){
+          var tokenStart = leftStart + m.index, context = safe.slice(Math.max(0,tokenStart-18), Math.min(safe.length,pos+36));
+          if (!explicitNpcPromotion(context,name,(context.match(/序列\s*([0-9])/)||[])[1])){
+            var token = m[0], numPos = token.search(/[0-9]/);
+            if (numPos >= 0){
+              var insertion = tokenStart + numPos + 1;
+              safe = safe.slice(0,insertion) + '。' + safe.slice(insertion);
+              pos += 1;
+              break;
+            }
+          }
+        }
+        var rightStart = pos + name.length;
+        var right = safe.slice(rightStart, Math.min(safe.length,rightStart+48));
+        var selfClaim = right.match(/(?:[：:,，“"「]\s*)?(我|你|玩家|主角|你本人)\s*(?:(?:目前|已经|现在|如今|已)\s*)?(?:是|达到|成为|晋升至|晋升为|达到序列)?\s*序列\s*([0-9])/);
+        if (selfClaim && !explicitNpcPromotion(safe.slice(Math.max(0,pos-8),Math.min(safe.length,rightStart+48)),name,selfClaim[2])){
+          var cutAt = rightStart + selfClaim.index;
+          safe = safe.slice(0,cutAt) + '。' + safe.slice(cutAt);
+          pos += 1;
+        }
+        pos += name.length;
+      }
+    }
+    return safe;
+  }
+
+  // 一、修复 V51.5 根因：calcMaxStats 必须提供有效 maxSanity。
+  if (typeof window.calcMaxStats === 'function' && !window.calcMaxStats.__v70SanityBase){
+    var oldCalc = window.calcMaxStats;
+    var fixedCalc = function(path,seq){
+      var v = oldCalc.apply(this,arguments) || {};
+      if (finiteNum(v.maxSanity) === null || Number(v.maxSanity) <= 1) v.maxSanity = 100;
+      return v;
+    };
+    fixedCalc.__v70SanityBase = true;
+    window.calcMaxStats = fixedCalc;
+  }
+
+  var BASE_STATE = cloneValue(state);
+  if (!BASE_STATE._v70LastGoodStats){
+    var initialGood = statRecord(BASE_STATE);
+    if (initialGood) BASE_STATE._v70LastGoodStats = {sanity:initialGood.sanity,maxSanity:initialGood.maxSanity,path:initialGood.path,seq:initialGood.seq,name:initialGood.name,signature:stateSignature(BASE_STATE)};
+  }
+  if (!state._v70LastGoodStats && BASE_STATE._v70LastGoodStats) state._v70LastGoodStats = cloneValue(BASE_STATE._v70LastGoodStats);
+
+  function repairLiveState(){
+    repairStateObject(state,null);
+    if (!Array.isArray(state.log)) state.log = [];
+    if (!state.relations || typeof state.relations !== 'object') state.relations = {};
+  }
+  function rerenderAll(){
+    var names = ['renderLogWindow','renderUI','renderAbilities','renderCurrency','renderSrc','renderEquip','renderSealed','renderBag','renderHouses','renderEvents','renderRel','renderFac','renderMapLv','renderMem','renderCal','renderVariablesTree','renderCraftRecipeTabs','renderCrucibleBench'];
+    names.forEach(function(n){ try{ if(typeof window[n] === 'function'){ if(n==='renderMem') window[n]($('memSearch') ? $('memSearch').value : ''); else if(n==='renderMapLv'){ window[n](); if(typeof window.renderMap==='function') window.renderMap(window.curMapLv || 'world'); } else window[n](); } }catch(e){ console.warn('[V70] render '+n,e); } });
+  }
+  function persistAutoState(){
+    try{
+      if(typeof window.buildSave !== 'function' || typeof window.getSaves !== 'function' || typeof window.setSaves !== 'function') return;
+      var one = window.buildSave();
+      var saves = window.getSaves(); saves['自动封存存档'] = cloneValue(one); window.setSaves(saves);
+      if(typeof window.setAutoSave === 'function') window.setAutoSave(cloneValue(one));
+    }catch(e){ console.warn('[V70] 自动存档同步失败',e); }
+  }
+  function fallbackRestore(snap){
+    if (!snap) return false;
+    if (snap.__v70FullState) return setStateObject(snap.__v70FullState);
+    if (snap.__v69FullState) return setStateObject(snap.__v69FullState);
+    return false;
+  }
+
+  // 二、读档前重置扩展状态，阻断上一档残留。
+  if (typeof window.applySave === 'function' && !window.applySave.__v70FullIsolation){
+    var oldApplySave = window.applySave;
+    var fixedApplySave = function(d){
+      historyStack = [];
+      setStateObject(BASE_STATE);
+      var result = oldApplySave.apply(this,arguments);
+      try{
+        if (d && d.__v70State && typeof d.__v70State === 'object') setStateObject(d.__v70State);
+        else if (d && d.v70State && typeof d.v70State === 'object') setStateObject(d.v70State);
+        repairLiveState();
+      }catch(e){ console.warn('[V70] 读档隔离/修复失败',e); }
+      return result;
+    };
+    fixedApplySave.__v70FullIsolation = true;
+    window.applySave = fixedApplySave;
+  }
+
+  // 新开局也清空旧存档未记录的扩展字段。
+  if (typeof window.resetWorldState === 'function' && !window.resetWorldState.__v70FullReset) {
+    var oldResetWorld = window.resetWorldState;
+    var fixedResetWorld = function(){
+      var result = oldResetWorld.apply(this,arguments);
+      var coreKeys = ['meta','time','weather','location','money','currency','appearance','avatar','identity','residence','hp','maxHp','mp','maxMp','sp','maxSp','sanity','maxSanity','path','seq','digest','abilities','equip','sealed','bag','houses','relations','factions','worldEvents','memory','recipes','sourceQualities','log','memoryIndex','memoryEntries'];
+      Object.keys(state).forEach(function(k){
+        if (coreKeys.indexOf(k) >= 0) return;
+        if (Object.prototype.hasOwnProperty.call(BASE_STATE,k)) state[k] = cloneValue(BASE_STATE[k]);
+        else { try{ delete state[k]; }catch(e){} }
+      });
+      state.sourceQualities = cloneValue(BASE_STATE.sourceQualities || {});
+      ['sourceCastle','chaosSea','motherNest','eternalDark','disorder','disaster','shadowWorld','lightKey','knowledge'].forEach(function(k){ state.sourceQualities[k] = false; });
+      historyStack = [];
+      repairLiveState();
+      return result;
+    };
+    fixedResetWorld.__v70FullReset = true;
+    window.resetWorldState = fixedResetWorld;
+  }
+
+  // 三、先备份原始存档，再做迁移/修复。
+  var backupPromise = null;
+  function backupBeforeMigration(raw){
+    if (backupPromise) return backupPromise;
+    var source = raw && typeof raw === 'object' ? raw : {};
+    if (!Object.keys(source).length) {
+      try { var ls = sg(SK); if (ls) { var parsed = JSON.parse(ls); if (parsed && typeof parsed === 'object') source = parsed; } } catch(e) {}
+    }
+    if (!Object.keys(source).length) return Promise.resolve(false);
+    var preserved = cloneSaveMap(source);
+    backupPromise = Promise.resolve().then(function(){
+      try { localStorage.setItem('guimi_v70_pre_repair_backup', JSON.stringify(preserved)); } catch(e) {}
+      if (typeof initDB !== 'function') return false;
+      return initDB().then(function(db){
+        return new Promise(function(resolve){
+          try {
+            var tx = db.transaction(DB_STORE_STATE,'readwrite');
+            tx.objectStore(DB_STORE_STATE).put(preserved,'all_saves_v70_pre_repair_backup');
+            tx.oncomplete = function(){ resolve(true); };
+            tx.onerror = function(){ resolve(false); };
+            tx.onabort = function(){ resolve(false); };
+          } catch(e) { resolve(false); }
+        });
+      }).catch(function(){ return false; });
+    });
+    return backupPromise;
+  }
+
+  // 独立深复制各存档槽，并扫描可识别的旧污染。
+  var oldGetSaves = typeof window.getSaves === 'function' ? window.getSaves : null;
+  var oldSetSaves = typeof window.setSaves === 'function' ? window.setSaves : null;
+  if (oldSetSaves && !oldSetSaves.__v70Isolated){
+    var fixedSetSaves = function(s){
+      var safe = cloneSaveMap(s);
+      var repaired = repairSavedCollection(safe);
+      return oldSetSaves.call(this,repaired.saves);
+    };
+    fixedSetSaves.__v70Isolated = true;
+    window.setSaves = fixedSetSaves;
+  }
+  if (oldGetSaves && !oldGetSaves.__v70Isolated){
+    var migrated = false;
+    var fixedGetSaves = function(){
+      var raw = oldGetSaves.apply(this,arguments);
+      if (!migrated){
+        backupBeforeMigration(raw);
+        var first = repairSavedCollection(raw);
+        migrated = true;
+        if (oldSetSaves) oldSetSaves.call(this,first.saves);
+        return cloneSaveMap(first.saves);
+      }
+      return cloneSaveMap(raw);
+    };
+    fixedGetSaves.__v70Isolated = true;
+    window.getSaves = fixedGetSaves;
+  }
+  if (typeof window.loadAllSavesFromDB === 'function' && !window.loadAllSavesFromDB.__v70Isolated){
+    var oldLoadAll = window.loadAllSavesFromDB;
+    var fixedLoadAll = function(){
+      return Promise.resolve(oldLoadAll.apply(this,arguments)).then(function(raw){
+        raw = raw || {};
+        return backupBeforeMigration(raw).then(function(){
+          var fixed = repairSavedCollection(raw);
+          try{
+            if(typeof window.saveAllSavesToDB==='function') return Promise.resolve(window.saveAllSavesToDB(fixed.saves)).then(function(){ return cloneSaveMap(fixed.saves); });
+          }catch(e){}
+          return cloneSaveMap(fixed.saves);
+        });
+      });
+    };
+    fixedLoadAll.__v70Isolated = true;
+    window.loadAllSavesFromDB = fixedLoadAll;
+  }
+
+  // 四、存档新增完整 state，供后续回退/重生成与读档使用。
+  if (typeof window.buildSave === 'function' && !window.buildSave.__v70FullState){
+    var oldBuildSave = window.buildSave;
+    var fixedBuildSave = function(){
+      repairLiveState();
+      var saved = oldBuildSave.apply(this,arguments) || {};
+      saved.__v70State = cloneValue(state);
+      saved.__v70Version = 1;
+      if (!saved.char) saved.char = {};
+      saved.char.sanity = state.sanity; saved.char.maxSanity = state.maxSanity;
+      saved.social = saved.social || {}; saved.social.relations = cloneValue(state.relations || {});
+      saved.world = saved.world || {}; saved.world.worldEvents = cloneValue(state.worldEvents || []); saved.world.sourceQualities = cloneValue(state.sourceQualities || {});
+      saved.system = saved.system || {};
+      ['_v58NpcFacts','_v64ItemMeta','_v64Facts','_v64Memory','_v67SafeFacts','_v67SafeBranches','_v67SafeMemory','_v67SafeTarot','_v67SafeLastDate','_v67MeetingDue','_worldTimelineLog'].forEach(function(k){ if(state[k] !== undefined) saved.system[k] = cloneValue(state[k]); });
+      return cloneValue(saved);
+    };
+    fixedBuildSave.__v70FullState = true;
+    window.buildSave = fixedBuildSave;
+  }
+
+  // 五、行动开始前保存完整 state 快照。
+  if (typeof window.execute === 'function' && !window.execute.__v70FullSnapshot){
+    var oldExecute = window.execute;
+    var fixedExecute = async function(){
+      repairLiveState();
+      var before = cloneValue(state);
+      var beforeTop = historyStack && historyStack.length ? historyStack[historyStack.length-1] : null;
+      var action = '';
+      try{ action = String(($('actionInput') && $('actionInput').value) || '').trim(); }catch(e){}
+      var result;
+      try{ result = await oldExecute.apply(this,arguments); }
+      finally{
+        try{
+          var top = historyStack && historyStack.length ? historyStack[historyStack.length-1] : null;
+          if (top && top !== beforeTop && (!action || !top.action || String(top.action).trim() === action)){
+            top.__v70FullState = before;
+            top.__v70Action = top.action || action;
+            top.__v70Version = 1;
+          }
+        }catch(e){ console.warn('[V70] 行动快照写入失败',e); }
+      }
+      return result;
+    };
+    fixedExecute.__v70FullSnapshot = true;
+    window.execute = fixedExecute;
+  }
+
+  // 六、完全替换部分恢复式回退/重新生成。
+  window.rollbackStep = function(){
+    if (window.running) { try{ toast('请等待本轮推演结束后再回退'); }catch(e){} return; }
+    if (!Array.isArray(historyStack) || !historyStack.length){ try{ toast('暂无上一轮因果记录可回溯'); }catch(e){} return; }
+    if (!window.confirm('确定将全部状态、记忆、人物事实、世界线与日志完整回溯至上一轮？')) return;
+    var snap = historyStack[historyStack.length-1];
+    if (!fallbackRestore(snap)){ try{ toast('该轮是旧版不完整快照，无法保证全量恢复；为防止进一步损坏，未执行回退'); }catch(e){} return; }
+    historyStack.pop();
+    repairLiveState(); rerenderAll(); persistAutoState();
+    try{ toast('↩ 已完整回溯：人物、物品、记忆、源质、世界线、战斗状态与日志均已恢复'); }catch(e){}
+  };
+  window.regenerateStep = async function(){
+    if (window.running) { try{ toast('请等待本轮推演结束后再重新生成'); }catch(e){} return; }
+    if (!Array.isArray(historyStack) || !historyStack.length){ try{ toast('暂无上一轮行动记录'); }catch(e){} return; }
+    var snap = historyStack[historyStack.length-1], action = snap && (snap.__v70Action || snap.action) || '';
+    if (!fallbackRestore(snap)){ try{ toast('该轮是旧版不完整快照，无法安全重新生成；为避免继续污染存档，已停止'); }catch(e){} return; }
+    historyStack.pop();
+    repairLiveState(); rerenderAll(); persistAutoState();
+    var input = $('actionInput');
+    if (!input || !action){ try{ toast('已回退状态，但未找到可重新执行的原行动'); }catch(e){} return; }
+    input.value = action;
+    var rerunResult = await window.execute();
+    var latest = historyStack && historyStack.length ? historyStack[historyStack.length-1] : null;
+    if (!latest || !latest.__v70FullState || String(latest.__v70Action || latest.action || '') !== String(action)) historyStack.push(snap);
+    return rerunResult;
+  };
+
+  // 七、NPC晋升校验和理智值输入过滤。
+  if (typeof window.applyAI === 'function' && !window.applyAI.__v70NpcGuard){
+    var oldApplyAI = window.applyAI;
+    var fixedApplyAI = function(data, action){
+      repairLiveState();
+      if (!data || typeof data !== 'object') return oldApplyAI.apply(this,arguments);
+      var callData = cloneValue(data);
+      var originalNarrative = data.narrative ? [data.narrative.scene,data.narrative.result,data.narrative.world].filter(Boolean).join('\n\n') : '';
+      var safeNarrative = originalNarrative;
+      if (callData.narrative){
+        ['scene','result','world'].forEach(function(k){ if(callData.narrative[k]) callData.narrative[k] = sanitizeNarrativeForFactParser(callData.narrative[k]); });
+        safeNarrative = [callData.narrative.scene,callData.narrative.result,callData.narrative.world].filter(Boolean).join('\n\n');
+      }
+      var pre = {}, preFacts = cloneValue(state._v58NpcFacts || {}), preSafeFacts = cloneValue(state._v67SafeFacts || {}), preTimeline = cloneValue(state._worldTimelineLog || {});
+      Object.keys(state.relations || {}).forEach(function(n){ var r=state.relations[n]; if(r) pre[n]={seq:r.seq,path:r.path,seqNum:seqNumber(r.seq),canonical:npcAliases(n)[0] || n}; });
+      var sc = callData.stateChanges || {};
+      if (callData.stateChanges && typeof callData.stateChanges === 'object') {
+        var statChange = callData.stateChanges;
+        var incomingMaxSanity = finiteNum(statChange.maxSanity);
+        var incomingSanity = finiteNum(statChange.sanity);
+        if (statChange.maxSanity !== undefined && (incomingMaxSanity === null || incomingMaxSanity <= 1)) delete statChange.maxSanity;
+        else if (incomingMaxSanity !== null) statChange.maxSanity = incomingMaxSanity;
+        if (statChange.sanity !== undefined && incomingSanity === null) delete statChange.sanity;
+        else if (incomingSanity !== null) {
+          var crisis = /疯狂|失控|崩溃|精神攻击|灵性侵蚀|失去理智|濒临疯狂|理智归零|san值归零|san降至1|理智降至1|精神彻底崩溃/i.test(originalNarrative);
+          if (incomingSanity <= 1 && Number(state.sanity) > 10 && !crisis) delete statChange.sanity;
+          else statChange.sanity = incomingSanity;
+        }
+      }
+      var blockedSeqs = [];
+      function stripUnsupported(list){
+        if(!Array.isArray(list)) return;
+        list.forEach(function(u){
+          if(!u || !u.name || u.seq == null) return;
+          var hit = pre[u.name], hitName = u.name;
+          if(!hit){ var names=Object.keys(pre); for(var i=0;i<names.length;i++){ if(names[i]===u.name || (names[i].indexOf(u.name)>=0) || (String(u.name).indexOf(names[i])>=0)){ hit=pre[names[i]]; hitName=names[i]; break; } } }
+          if(!hit) return;
+          var wanted = seqNumber(u.seq);
+          if(hit.seqNum !== 99 && wanted !== 99 && wanted < hit.seqNum && !npcPromotionSupported(originalNarrative,u.name,wanted,hit.seqNum)){
+            blockedSeqs.push({name:hitName,seq:hit.seq,path:hit.path,canonical:hit.canonical});
+            try{ delete u.seq; }catch(e){ u.seq = undefined; }
+          }
+        });
+      }
+      stripUnsupported(sc.addRelation);
+      stripUnsupported(callData.npcUpdates);
+      var oldLogLen = (state.log || []).length, oldMemLen = (state.memoryEntries || []).length;
+      var result = oldApplyAI.call(this,callData,action);
+      try{
+        blockedSeqs.forEach(function(b){
+          var key = state.relations && state.relations[b.name] ? b.name : null;
+          if(!key){ key = Object.keys(state.relations||{}).find(function(k){ return k===b.name || k.indexOf(b.name)>=0 || b.name.indexOf(k)>=0; }) || null; }
+          if(key && state.relations[key]){
+            state.relations[key].seq = b.seq;
+            if(b.path !== undefined) state.relations[key].path = b.path;
+            restoreNpcLedger('_v58NpcFacts',b.canonical || b.name,preFacts);
+            restoreNpcLedger('_v67SafeFacts',b.canonical || b.name,preSafeFacts);
+          }
+        });
+        var supportedUpdates = [];
+        if (callData.stateChanges && Array.isArray(callData.stateChanges.addRelation)) supportedUpdates = supportedUpdates.concat(callData.stateChanges.addRelation);
+        if (Array.isArray(callData.npcUpdates)) supportedUpdates = supportedUpdates.concat(callData.npcUpdates);
+        supportedUpdates.forEach(function(u){
+          if(!u || !u.name || u.seq == null) return;
+          var previous = null, prevName = null;
+          Object.keys(pre).some(function(n){
+            if(n===u.name || n.indexOf(u.name)>=0 || String(u.name).indexOf(n)>=0 || npcAliases(n).some(function(a){return a===u.name || a.indexOf(u.name)>=0 || String(u.name).indexOf(a)>=0;})){
+              previous=pre[n]; prevName=n; return true;
+            }
+            return false;
+          });
+          if(!previous || previous.seqNum===99) return;
+          var wanted=seqNumber(u.seq);
+          if(wanted===99 || wanted>=previous.seqNum || !npcPromotionSupported(originalNarrative,u.name,wanted,previous.seqNum)) return;
+          var keys=Object.keys(state.relations||{}), relKey=null;
+          if(state.relations[u.name]) relKey=u.name;
+          if(!relKey) relKey=keys.find(function(k){ return k===prevName || k.indexOf(u.name)>=0 || String(u.name).indexOf(k)>=0 || npcAliases(k).some(function(a){return a===u.name || a.indexOf(u.name)>=0 || String(u.name).indexOf(a)>=0;}); });
+          if(!relKey || !state.relations[relKey]) return;
+          var rel=state.relations[relKey];
+          rel.seq=String(u.seq);
+          if(u.path) rel.path=String(u.path);
+          var canonical=previous.canonical || prevName || u.name;
+          if(!state._v58NpcFacts || typeof state._v58NpcFacts!=='object') state._v58NpcFacts={};
+          state._v58NpcFacts[canonical]=state._v58NpcFacts[canonical]||{};
+          state._v58NpcFacts[canonical].seqNum=wanted;
+          state._v58NpcFacts[canonical].seqText=String(u.seq);
+          state._v58NpcFacts[canonical].path=rel.path || previous.path || '';
+          state._v58NpcFacts[canonical].seqSource='v70-supported-promotion';
+          if(state._v67SafeFacts && typeof state._v67SafeFacts==='object'){
+            var fact=ledgerEntry(state._v67SafeFacts,canonical);
+            if(fact && fact.value && typeof fact.value==='object'){
+              fact.value.seqNum=wanted; fact.value.seqText=String(u.seq); if(rel.path) fact.value.path=rel.path;
+            }
+          }
+        });
+        if (safeNarrative && originalNarrative && safeNarrative !== originalNarrative){
+          (state.log || []).slice(oldLogLen).forEach(function(e){ if(e && e.content === safeNarrative) e.content = originalNarrative; });
+          (state.memoryEntries || []).slice(oldMemLen).forEach(function(e){ if(e && e.rawText === safeNarrative) e.rawText = originalNarrative; });
+        }
+        Object.keys(pre).forEach(function(n){
+          var old = pre[n], rel = (state.relations || {})[n]; if(!rel) return;
+          var nowNum = seqNumber(rel.seq);
+          if(old.seqNum !== 99 && nowNum !== 99 && nowNum < old.seqNum && !npcPromotionSupported(originalNarrative,n,nowNum,old.seqNum) && !milestoneJustApplied(preTimeline,state._worldTimelineLog,n)){
+            rel.seq = old.seq;
+            if(old.path !== undefined) rel.path = old.path;
+            restoreNpcLedger('_v58NpcFacts',old.canonical,preFacts);
+            restoreNpcLedger('_v67SafeFacts',old.canonical,preSafeFacts);
+            console.warn('[V70] 已拦截缺少剧情依据的 NPC 晋升：'+n+' '+old.seq+' → '+nowNum);
+          }
+        });
+      }catch(e){ console.warn('[V70] NPC序列校验异常',e); }
+      repairLiveState();
+      return result;
+    };
+    fixedApplyAI.__v70NpcGuard = true;
+    window.applyAI = fixedApplyAI;
+  }
+
+  // 八、旧档修复命令和诊断。
+  repairLiveState();
+  window.v70RepairSanity = function(){ repairSanityObject(state,null); rerenderAll(); persistAutoState(); return {sanity:state.sanity,maxSanity:state.maxSanity}; };
+  window.v70RepairAllSaves = function(){
+    try{
+      var saves = window.getSaves ? window.getSaves() : {};
+      var fixed = repairSavedCollection(saves);
+      if(window.setSaves) window.setSaves(fixed.saves);
+      if(typeof toast==='function') toast('已逐档隔离并扫描修复；没有可用备份的旧理智值按基础值恢复');
+      return {slots:Object.keys(fixed.saves).length,changed:fixed.changed};
+    }catch(e){ console.warn('[V70] 修复存档失败',e); return {error:String(e)}; }
+  };
+  window.v70CheckSaves = function(){
+    var saves = window.getSaves ? window.getSaves() : {}, rows = [];
+    Object.keys(saves||{}).forEach(function(slot){
+      var save = saves[slot] || {}, st = save.__v70State || {}, c = save.char || {}, rels = st.relations || (save.social && save.social.relations) || {};
+      var audreyKey = Object.keys(rels).find(function(k){ return /奥黛丽/.test(k); });
+      rows.push({slot:slot,gameTime:st.time || (save.meta && save.meta.time) || '',sanity:st.sanity !== undefined ? st.sanity : c.sanity,maxSanity:st.maxSanity !== undefined ? st.maxSanity : c.maxSanity,audreySeq:audreyKey && rels[audreyKey] ? rels[audreyKey].seq : '',fullState:!!save.__v70State,logCount:Array.isArray(st.log) ? st.log.length : ((save.system && save.system.logTotal) || (save.system && save.system.logTail && save.system.logTail.length) || 0)});
+    });
+    console.log('[V70 各档位检查]',rows); return rows;
+  };
+  window.v70Check = function(){
+    var out={sanity:state.sanity,maxSanity:state.maxSanity,historySnapshots:(historyStack||[]).map(function(s){return {action:s.__v70Action||s.action,full:!!s.__v70FullState};}),relations:{},saveIsolation:window.__V70_FULL_RECOVERY__===true};
+    Object.keys(state.relations||{}).forEach(function(n){ if(/奥黛丽/.test(n)) out.relations[n]={seq:state.relations[n].seq,path:state.relations[n].path,fact:state._v58NpcFacts&&state._v58NpcFacts[n]}; });
+    console.log('[V70 检查]',out); return out;
+  };
+  async function readPreRepairBackup(){
+    try { var text=localStorage.getItem('guimi_v70_pre_repair_backup'); if(text){ var parsed=JSON.parse(text); if(parsed&&typeof parsed==='object') return parsed; } } catch(e){}
+    try {
+      if(typeof initDB!=='function') return null;
+      var db=await initDB();
+      return await new Promise(function(resolve){
+        try{
+          var tx=db.transaction(DB_STORE_STATE,'readonly'), req=tx.objectStore(DB_STORE_STATE).get('all_saves_v70_pre_repair_backup');
+          req.onsuccess=function(){ resolve(req.result&&typeof req.result==='object'?req.result:null); };
+          req.onerror=function(){ resolve(null); };
+        }catch(e){ resolve(null); }
+      });
+    } catch(e){ return null; }
+  }
+  window.v70BackupStatus = async function(){
+    var backup=await readPreRepairBackup();
+    var result={available:!!backup,slots:backup?Object.keys(backup):[],note:'这是V70迁移/修复前的存档副本；若旧档在安装前已污染，副本也会保留原污染。'};
+    console.log('[V70 原始存档备份]',result); return result;
+  };
+  window.v70RestorePreRepairBackup = async function(){
+    if(!window.confirm('这会用V70修复前的原始存档副本覆盖当前全部档位。确认仅在你需要撤销本次存档迁移时使用？')) return false;
+    var backup=await readPreRepairBackup();
+    if(!backup){ try{toast('没有找到V70修复前备份');}catch(e){} return false; }
+    var independent=cloneSaveMap(backup);
+    if(oldSetSaves) oldSetSaves.call(window,independent); else if(window.setSaves) window.setSaves(independent);
+    try{toast('已恢复V70修复前的存档副本；请检查各档位。');}catch(e){}
+    console.warn('[V70] 已回到修复前存档副本。注意：该副本只保留安装补丁前实际存在的数据。');
+    return true;
+  };
+  console.log('%c[V70] 全量回退/重新生成、存档隔离、NPC晋升校验与SAN修复已挂载','color:#15803d;font-weight:bold');
+})();
+/* ▲▲▲ V70 完 ▲▲▲ */
 </script>
 </body>
 </html>
