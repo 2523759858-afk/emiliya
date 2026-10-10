@@ -27421,6 +27421,120 @@ console.log(
 
   console.log('%c✅ 完成：奥黛丽·霍尔 → ' + FULL, 'color:#16a34a;font-weight:bold');
 })();
+(function(){
+  var FULL = '序列9·观众', N = 9;
+
+  function fixTarget(r, f){
+    if(r){
+      r.seq = FULL;
+      r.path = '观众';
+    }
+    if(f && typeof f === 'object'){
+      f.seqNum = N;
+      f.seqText = FULL;
+      f.path = '观众';
+      f.seqSource = 'manual-repair';
+      if(f.value && typeof f.value === 'object'){
+        f.value.seqNum = N;
+        f.value.seqText = FULL;
+        f.value.path = '观众';
+      }
+    }
+  }
+
+  // === 1. 当前内存 ===
+  var log = [];
+  Object.keys(state.relations||{}).forEach(function(k){
+    if(/奥黛丽/.test(k)){
+      fixTarget(state.relations[k], null);
+      log.push('relations[' + k + '] → ' + FULL);
+    }
+  });
+  if(state._v58NpcFacts){
+    Object.keys(state._v58NpcFacts).forEach(function(k){
+      if(/奥黛丽/.test(k)){
+        fixTarget(null, state._v58NpcFacts[k]);
+        log.push('_v58NpcFacts[' + k + '].seqNum → ' + N);
+      }
+    });
+    if(!Object.keys(state._v58NpcFacts).some(function(k){return /奥黛丽/.test(k);})){
+      state._v58NpcFacts['奥黛丽·霍尔'] = {seqNum:N, seqText:FULL, path:'观众', seqSource:'manual-repair'};
+      log.push('_v58NpcFacts 新建奥黛丽条目');
+    }
+  }
+  if(state._v67SafeFacts){
+    Object.keys(state._v67SafeFacts).forEach(function(k){
+      if(/奥黛丽/.test(k)){
+        fixTarget(null, state._v67SafeFacts[k]);
+        log.push('_v67SafeFacts[' + k + '] → ' + N);
+      }
+    });
+  }
+  if(state._worldTimelineLog){
+    Object.keys(state._worldTimelineLog).forEach(function(k){
+      if(/audrey|奥黛丽/i.test(k)){
+        delete state._worldTimelineLog[k];
+        log.push('清 override[' + k + ']');
+      }
+    });
+  }
+
+  // === 2. 所有存档槽 ===
+  try{
+    var saves = JSON.parse(JSON.stringify(typeof getSaves==='function' ? getSaves() : {}));
+    var touched = 0;
+    Object.keys(saves).forEach(function(slot){
+      var sv = saves[slot]; if(!sv) return;
+      var c = 0;
+      if(sv.social && sv.social.relations){
+        Object.keys(sv.social.relations).forEach(function(k){
+          if(/奥黛丽/.test(k)){ fixTarget(sv.social.relations[k], null); c++; }
+        });
+      }
+      if(sv.system){
+        if(sv.system._v58NpcFacts){
+          Object.keys(sv.system._v58NpcFacts).forEach(function(k){
+            if(/奥黛丽/.test(k)){ fixTarget(null, sv.system._v58NpcFacts[k]); c++; }
+          });
+        }
+        if(sv.system._v67SafeFacts){
+          Object.keys(sv.system._v67SafeFacts).forEach(function(k){
+            if(/奥黛丽/.test(k)){ fixTarget(null, sv.system._v67SafeFacts[k]); c++; }
+          });
+        }
+        if(sv.system._worldTimelineLog){
+          Object.keys(sv.system._worldTimelineLog).forEach(function(k){
+            if(/audrey|奥黛丽/i.test(k)){ delete sv.system._worldTimelineLog[k]; c++; }
+          });
+        }
+      }
+      if(sv.__v70State){
+        if(sv.__v70State.relations){
+          Object.keys(sv.__v70State.relations).forEach(function(k){
+            if(/奥黛丽/.test(k)){ fixTarget(sv.__v70State.relations[k], null); c++; }
+          });
+        }
+        if(sv.__v70State._v58NpcFacts){
+          Object.keys(sv.__v70State._v58NpcFacts).forEach(function(k){
+            if(/奥黛丽/.test(k)){ fixTarget(null, sv.__v70State._v58NpcFacts[k]); c++; }
+          });
+        }
+      }
+      if(c > 0){ touched++; console.log('  [' + slot + '] 修 ' + c + ' 处'); }
+    });
+    if(touched > 0){
+      if(typeof setSaves==='function') setSaves(saves);
+      console.log('✅ 存档槽：写回 ' + touched + ' 个');
+    } else console.log('存档里没找到奥黛丽数据');
+  }catch(e){ console.log('存档写回异常', e); }
+
+  log.forEach(function(x){ console.log('  · ' + x); });
+
+  // === 3. 刷新羁绊面板 ===
+  try{ if(typeof renderRel==='function') renderRel(); }catch(e){}
+
+  console.log('%c✅ 完成：奥黛丽·霍尔 → ' + FULL, 'color:#16a34a;font-weight:bold');
+})();
 </script>
 </body>
 </html>
