@@ -27535,6 +27535,68 @@ console.log(
 
   console.log('%c✅ 完成：奥黛丽·霍尔 → ' + FULL, 'color:#16a34a;font-weight:bold');
 })();
+(function(){
+  // 1. 先清掉世界线里奥黛丽的 override（V70 才肯放手）
+  if(state._worldTimelineLog){
+    Object.keys(state._worldTimelineLog).forEach(function(k){
+      if(/audrey|奥黛丽/i.test(k)) delete state._worldTimelineLog[k];
+    });
+  }
+
+  // 2. 用 V59 自带的锚定 API（如果存在）—— 它会同时改快照+当前值
+  if(typeof window.v58Anchor === 'function'){
+    try{ window.v58Anchor('奥黛丽·霍尔', '序列9·观众', '观众'); }catch(e){ console.warn('v58Anchor 失败', e); }
+  }
+
+  // 3. 手动兜底：快照 + 当前值一起改
+  var FULL = '序列9·观众', N = 9;
+  Object.keys(state.relations||{}).forEach(function(k){
+    if(/奥黛丽/.test(k)){
+      state.relations[k].seq = FULL;
+      state.relations[k].path = '观众';
+    }
+  });
+  if(state._v58NpcFacts){
+    var hit = false;
+    Object.keys(state._v58NpcFacts).forEach(function(k){
+      if(/奥黛丽/.test(k)){
+        hit = true;
+        state._v58NpcFacts[k].seqNum = N;
+        state._v58NpcFacts[k].seqText = FULL;
+        state._v58NpcFacts[k].path = '观众';
+        state._v58NpcFacts[k].seqSource = 'manual';
+      }
+    });
+    if(!hit){
+      state._v58NpcFacts['奥黛丽·霍尔'] = {seqNum:N, seqText:FULL, path:'观众', seqSource:'manual'};
+    }
+  }
+  if(state._v67SafeFacts){
+    Object.keys(state._v67SafeFacts).forEach(function(k){
+      if(/奥黛丽/.test(k)){
+        var f = state._v67SafeFacts[k];
+        f.seqNum = N; f.seqText = FULL; f.path = '观众';
+        if(f.value){ f.value.seqNum = N; f.value.seqText = FULL; f.value.path = '观众'; }
+      }
+    });
+  }
+
+  // 4. 渲染
+  try{ if(typeof renderRel === 'function') renderRel(); }catch(e){}
+  try{ if(typeof renderUI === 'function') renderUI(); }catch(e){}
+
+  // 5. 输出诊断（**看这个 Console 输出，判断到底改了没**）
+  console.log('=== 修复结果 ===');
+  Object.keys(state.relations||{}).forEach(function(k){
+    if(/奥黛丽/.test(k)) console.log('relations[' + k + '].seq =', state.relations[k].seq);
+  });
+  if(state._v58NpcFacts){
+    Object.keys(state._v58NpcFacts).forEach(function(k){
+      if(/奥黛丽/.test(k)) console.log('_v58NpcFacts[' + k + '].seqNum =', state._v58NpcFacts[k].seqNum);
+    });
+  }
+  console.log('================');
+})();
 </script>
 </body>
 </html>
