@@ -27317,6 +27317,110 @@ console.log(
   console.log('%c[V70] 全量回退/重新生成、存档隔离、NPC晋升校验与SAN修复已挂载','color:#15803d;font-weight:bold');
 })();
 /* ▲▲▲ V70 完 ▲▲▲ */
+(function(){
+  var FULL = '序列9·观众';
+  var N = 9;
+  if(!/1349\s*年\s*7\s*月/.test(String(state.time||''))){
+    if(!confirm('检测到游戏时间不是 1349 年 7 月（当前：' + state.time + '）\n\n仍要按「' + FULL + '」修复奥黛丽？')) return;
+  }
+  if(!confirm('游戏时间：' + state.time + '\n奥黛丽·霍尔 → ' + FULL + '\n\n确认修复？（同时会清掉会覆盖回去的快照）')) return;
+
+  function fixObj(s){
+    if(!s || typeof s !== 'object') return 0;
+    var n = 0;
+    // 1. 当前 relations
+    if(s.relations){
+      Object.keys(s.relations).forEach(function(k){
+        if(/奥黛丽/.test(k) && s.relations[k]){
+          s.relations[k].seq = FULL;
+          s.relations[k].path = '观众';
+          n++;
+        }
+      });
+    }
+    // 2. V58 事实快照（会覆盖 relations）
+    if(s._v58NpcFacts){
+      Object.keys(s._v58NpcFacts).forEach(function(k){
+        if(/奥黛丽/.test(k)){
+          delete s._v58NpcFacts[k];
+          n++;
+        }
+      });
+    }
+    // 3. V67 安全事实层
+    if(s._v67SafeFacts){
+      Object.keys(s._v67SafeFacts).forEach(function(k){
+        if(/奥黛丽/.test(k)){
+          delete s._v67SafeFacts[k];
+          n++;
+        }
+      });
+    }
+    // 4. V64 事实层里“序列”键
+    if(s._v64Facts){
+      Object.keys(s._v64Facts).forEach(function(k){
+        var f = s._v64Facts[k];
+        if(f && /奥黛丽/.test(String(f.entity||'')) && /序列/.test(String(f.key||''))){
+          f.value = FULL;
+          n++;
+        }
+      });
+    }
+    // 5. 世界线 override（会让 V59 按原著日期重算，不锁死）
+    if(s._worldTimelineLog){
+      Object.keys(s._worldTimelineLog).forEach(function(k){
+        if(/audrey|奥黛丽/i.test(k)){
+          delete s._worldTimelineLog[k];
+          n++;
+        }
+      });
+    }
+    return n;
+  }
+
+  var c1 = fixObj(state);
+  console.log('当前内存：修 ' + c1 + ' 处');
+
+  if(typeof getSaves === 'function' && typeof setSaves === 'function'){
+    var saves = getSaves(), touched = 0;
+    Object.keys(saves).forEach(function(slot){
+      var sv = saves[slot]; if(!sv || typeof sv !== 'object') return;
+      var c = 0;
+
+      // 存档里的 relations
+      if(sv.social && sv.social.relations){
+        Object.keys(sv.social.relations).forEach(function(k){
+          if(/奥黛丽/.test(k) && sv.social.relations[k]){
+            sv.social.relations[k].seq = FULL;
+            sv.social.relations[k].path = '观众';
+            c++;
+          }
+        });
+      }
+      // 存档里的 system.*
+      if(sv.system && typeof sv.system === 'object'){
+        ['_v58NpcFacts','_v67SafeFacts','_v64Facts','_worldTimelineLog'].forEach(function(fk){
+          if(sv.system[fk]){
+            var tmp = {}; tmp[fk] = sv.system[fk];
+            c += fixObj(tmp);
+            sv.system[fk] = tmp[fk];
+          }
+        });
+      }
+      // V70 的完整快照
+      if(sv.__v70State) c += fixObj(sv.__v70State);
+
+      if(c > 0){ touched++; console.log('  [' + slot + '] 修 ' + c + ' 处'); }
+    });
+    if(touched > 0){ setSaves(saves); console.log('✅ 已写回 ' + touched + ' 个存档槽'); }
+    else console.log('存档槽里没找到奥黛丽相关数据（可能保存在 IndexedDB，稍后刷新页面会自然生效）');
+  }
+
+  try{ if(typeof renderRel === 'function') renderRel(); }catch(e){}
+  try{ if(typeof renderUI === 'function') renderUI(); }catch(e){}
+
+  console.log('%c✅ 完成：奥黛丽·霍尔 → ' + FULL, 'color:#16a34a;font-weight:bold');
+})();
 </script>
 </body>
 </html>
