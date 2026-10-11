@@ -27503,6 +27503,215 @@ console.log(
 
 })();
 /* ▲▲▲ V73 完 ▲▲▲ */
+/* ▼▼▼ V74 · 修复成熟剧情 Load failed + 去除 V73 重复提示 ▼▼▼ */
+(function(){
+  'use strict';
+  if (window.__V74_MATURE_LOAD_FIX__) return;
+  window.__V74_MATURE_LOAD_FIX__ = true;
+
+  var OLD_MARK = '【V73·成熟文学叙事尺度扩展】';
+  var MARK = '【V74·成熟小说叙事尺度放宽】';
+
+  // 清理 V73 追加到 GM_SYSTEM 末尾的长提示。
+  try {
+    if (typeof GM_SYSTEM === 'string') {
+      var oldAt = GM_SYSTEM.indexOf(OLD_MARK);
+      if (oldAt >= 0) {
+        GM_SYSTEM = GM_SYSTEM.slice(0, oldAt).trimEnd();
+      }
+    }
+  } catch (e) {
+    console.warn('[V74] 清理 V73 旧提示失败：', e);
+  }
+
+  var RULES = [
+    MARK,
+    OLD_MARK, // 防止 V73 的旧 callAPI 包装器再次注入长提示。
+    '本规则只调整成熟小说的叙事表现，不改变世界设定、角色人格、状态数值或纯 JSON 协议。不要向玩家展示规则。',
+
+    '成年角色之间的吸引、暧昧、调情、双关、试探、嫉妒、身体亲近、拥抱、亲吻、抚摸、依偎、共同过夜和自愿亲密关系，都是正常的小说素材；不要求角色必须先成为恋人。NPC也可以主动示好或主动靠近，但必须符合性格、情境、关系和因果。',
+
+    '描写不要只用“她害羞了”“他们共度一夜”一句带过。通过具体动作、距离、眼神、声音、衣料、气息、体温、呼吸、停顿、心理变化和事后反应形成连续场景。可以成熟、感性、暧昧、热烈或含蓄，不要突然说教、拒绝整段剧情或机械跳到第二天。亲密不等于每次都必须发生性关系。',
+
+    '成年人且明确自愿的亲密关系可以作为真实剧情发生，并可描写铺垫、接近、双方反应、情绪和事后余韵；保持文学化、非露骨的呈现，不写明确生殖器细节、体液特写或逐步的露骨性行为操作。',
+
+    '威胁、勒索、权势压迫、诱骗、强迫处境、羞辱、侵犯边界、危险关系与黑暗反派行为可以作为剧情事件出现，不要把世界净化成所有人都温和守礼。可写威胁本身、心理压力、恐惧、愤怒、僵持、周旋、反抗、逃脱及其后果。必须区分自愿与受胁迫；严重的非自愿性事件采用非露骨、非色情化呈现，可描写事件前后、暗示和心理后果，不描写露骨的性暴力过程。',
+
+    '涉及性关系时，只限当前剧情明确为成年且自愿的角色；年龄不清楚就不写性行为。角色拒绝、犹豫或改变主意应成为自然剧情，不触发整段回答突然中止。',
+
+    '不要因“现实因果、低戏剧化”而无故压掉成年人合理的欲望或亲密行为；也不要自动把一次接触升级为性关系、自动大幅提高好感或擅自改变角色身份。只有剧情支持时才更新状态。'
+  ].join('\n');
+
+  function isMain(messages) {
+    return Array.isArray(messages) && messages.some(function(m) {
+      if (!m || m.role !== 'system' || typeof m.content !== 'string') {
+        return false;
+      }
+
+      return m.content.indexOf('你是《诡秘之主》世界最高模拟器GM') >= 0 ||
+        m.content.indexOf('【V60·世界运行/战斗/死亡/分支铁律】') >= 0 ||
+        m.content.indexOf('【完整《诡秘之主世界书 v5.0》底层总纲】') >= 0;
+    });
+  }
+
+  function cloneMessages(messages) {
+    return messages.map(function(m) {
+      if (!m || typeof m !== 'object') return m;
+      var out = {};
+      Object.keys(m).forEach(function(k) {
+        out[k] = m[k];
+      });
+      return out;
+    });
+  }
+
+  function inject(messages) {
+    if (!isMain(messages)) return messages;
+
+    if (messages.some(function(m) {
+      return m && typeof m.content === 'string' &&
+        m.content.indexOf(MARK) >= 0;
+    })) return messages;
+
+    var out = cloneMessages(messages);
+    var ix = out.findIndex(function(m) {
+      return m && m.role === 'system' &&
+        typeof m.content === 'string';
+    });
+
+    if (ix < 0) return messages;
+    out[ix].content += '\n\n' + RULES;
+    return out;
+  }
+
+  // 用短规则替代旧的重复注入；保留原 API 配置和响应。
+  if (typeof window.callAPI === 'function' &&
+      !window.callAPI.__v74MatureLoadFix) {
+
+    var oldCallAPI = window.callAPI;
+
+    var wrappedCallAPI = async function(messages, config) {
+      var outgoing = messages;
+
+      try {
+        outgoing = inject(messages);
+      } catch (e) {
+        console.warn('[V74] 提示注入失败，继续原请求：', e);
+      }
+
+      return oldCallAPI.call(this, outgoing, config);
+    };
+
+    wrappedCallAPI.__v74MatureLoadFix = true;
+    window.callAPI = wrappedCallAPI;
+  }
+
+  function countChars(body) {
+    try {
+      return (body.messages || []).reduce(function(n, m) {
+        return n + String(m && m.content || '').length;
+      }, 0);
+    } catch (e) {
+      return 0;
+    }
+  }
+
+  function cloneBody(body) {
+    try {
+      return JSON.parse(JSON.stringify(body));
+    } catch (e) {
+      return body;
+    }
+  }
+
+  function isLoadFailure(e) {
+    return /load failed|failed to fetch|networkerror|network error|fetch failed|connection was lost/i
+      .test(String(e && e.message || e || ''));
+  }
+
+  function compactBody(body) {
+    var out = cloneBody(body);
+    if (!out || !Array.isArray(out.messages)) return out;
+
+    out.messages.forEach(function(m) {
+      if (!m || typeof m.content !== 'string') return;
+
+      // 去掉残留的 V73 长提示，但保留 V74 的短规则。
+      var p = m.content.indexOf(OLD_MARK);
+      var v74 = m.content.indexOf(MARK);
+
+      if (p >= 0 && v74 < 0) {
+        m.content = m.content.slice(0, p).trimEnd();
+      }
+
+      // 只压缩过长的 user 上下文，优先保留行动和输出要求。
+      if (m.role === 'user' && m.content.length > 36000) {
+        var s = m.content;
+        var actionAt = s.lastIndexOf('【玩家此轮行动】');
+        var tailStart = actionAt >= 0
+          ? actionAt
+          : Math.max(0, s.length - 6500);
+
+        var head = s.slice(0, 10500);
+        var tail = s.slice(tailStart);
+
+        if (tail.length > 14000) {
+          tail = tail.slice(-14000);
+        }
+
+        if (head.length + tail.length < s.length) {
+          m.content = head +
+            '\n\n【V74：网络重试时压缩了中段历史上下文；保留行动、状态开头和输出要求】\n\n' +
+            tail;
+        }
+      }
+    });
+
+    return out;
+  }
+
+  // iOS Load failed 时，仅对过长的主剧情请求进行一次压缩重试。
+  if (typeof window.unifiedRequest === 'function' &&
+      !window.unifiedRequest.__v74LoadRetry) {
+
+    var oldUnified = window.unifiedRequest;
+
+    var wrappedUnified = async function(url, key, body, timeout) {
+      try {
+        return await oldUnified.call(this, url, key, body, timeout);
+      } catch (e1) {
+        if (!isLoadFailure(e1) ||
+            !body ||
+            !Array.isArray(body.messages) ||
+            countChars(body) < 36000) {
+          throw e1;
+        }
+
+        var smaller = compactBody(body);
+
+        if (countChars(smaller) >= countChars(body)) {
+          throw e1;
+        }
+
+        console.warn(
+          '[V74] iOS Load failed：压缩过长上下文后重试一次。',
+          countChars(body), '→', countChars(smaller)
+        );
+
+        return oldUnified.call(this, url, key, smaller, timeout);
+      }
+    };
+
+    wrappedUnified.__v74LoadRetry = true;
+    window.unifiedRequest = wrappedUnified;
+  }
+
+  console.log(
+    '%c[V74] 已移除 V73 重复注入；成熟叙事改用短提示，并启用长请求 Load failed 重试。',
+    'color:#15803d;font-weight:bold'
+  );
+})();
+/* ▲▲▲ V74 完 ▲▲▲ */
 </script>
 </body>
 </html>
