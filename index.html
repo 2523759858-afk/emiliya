@@ -27317,6 +27317,642 @@ console.log(
   console.log('%c[V70] 全量回退/重新生成、存档隔离、NPC晋升校验与SAN修复已挂载','color:#15803d;font-weight:bold');
 })();
 /* ▲▲▲ V70 完 ▲▲▲ */
+/* ▼▼▼ V78 · 对话输入框内校正NPC年龄（仅年龄模块） ▼▼▼ */
+(function(){
+  'use strict';
+  if (window.__V78_CHAT_AGE_CORRECTION__) return;
+
+  var LOCK_KEY = '_v78ChatAgeLock';
+  var REGISTRY = window.__V78_CHAT_AGE_LOCKS__ ||
+    (window.__V78_CHAT_AGE_LOCKS__ = {});
+
+  var CANONICAL_ALIASES = {
+    '克莱恩·莫雷蒂': [
+      '克莱恩·莫雷蒂', '克莱恩', '周明瑞',
+      '夏洛克·莫里亚蒂', '格尔曼·斯帕罗', '道恩·唐泰斯'
+    ],
+    '奥黛丽·霍尔': ['奥黛丽·霍尔', '奥黛丽'],
+    '阿尔杰·威尔逊': ['阿尔杰·威尔逊', '阿尔杰'],
+    '戴里克·伯格': ['戴里克·伯格', '戴里克'],
+    '伦纳德·米切尔': ['伦纳德·米切尔', '伦纳德'],
+    '佛尔思·沃尔': ['佛尔思·沃尔', '佛尔思'],
+    '埃姆林·怀特': ['埃姆林·怀特', '埃姆林'],
+    '休·迪尔查': ['休·迪尔查', '休'],
+    '嘉德丽雅': ['嘉德丽雅'],
+    '苏茜': ['苏茜'],
+    '莎伦': ['莎伦']
+  };
+
+  function getState(){
+    return (typeof state !== 'undefined' && state) ||
+      window.state || null;
+  }
+
+  function currentYear(){
+    var s = getState();
+    var t = String(s && (s.time || (s.meta && s.meta.time)) || '');
+    var m = t.match(/(\d{4})\s*年/);
+    if (m) return Number(m[1]);
+    m = t.match(/(\d{4})\s*[-\/.]/);
+    return m ? Number(m[1]) : null;
+  }
+
+  function normalize(s){
+    return String(s || '').replace(
+      /[\s　·・•,，。．.、:：;；!！?？'"“”‘’（）()\[\]【】{}]/g,
+      ''
+    ).toLowerCase();
+  }
+
+  function npcAliases(key, rel){
+    var aliases = [String(key || '')];
+
+    if (rel){
+      ['name','fullName','displayName','nickname','alias'].forEach(function(k){
+        if (typeof rel[k] === 'string' && rel[k]) {
+          aliases.push(rel[k]);
+        }
+      });
+
+      if (Array.isArray(rel.aliases)){
+        aliases = aliases.concat(
+          rel.aliases.filter(function(x){ return typeof x === 'string'; })
+        );
+      }
+    }
+
+    var n = String(key || '');
+    var canonical = Object.keys(CANONICAL_ALIASES).find(function(k){
+      return [k].concat(CANONICAL_ALIASES[k]).some(function(alias){
+        return normalize(alias) === normalize(n);
+      });
+    });
+
+    if (canonical) aliases = aliases.concat(CANONICAL_ALIASES[canonical]);
+
+    var first = n.split(/[·・•\s]/)[0];
+    if (first && first.length >= 2) aliases.push(first);
+
+    var out = [], seen = {};
+    aliases.forEach(function(x){
+      var nx = normalize(x);
+      if (nx && nx.length >= 2 && !seen[nx]){
+        seen[nx] = true;
+        out.push(String(x));
+      }
+    });
+
+    return out.sort(function(a,b){
+      return normalize(b).length - normalize(a).length;
+    });
+  }
+
+  function findMentionedNpc(text){
+    var s = getState();
+    var rels = s && s.relations || {};
+    var raw = normalize(text);
+    var hits = [];
+
+    Object.keys(rels).forEach(function(key){
+      var rel = rels[key];
+      if (!rel) return;
+
+      npcAliases(key, rel).forEach(function(alias){
+        var a = normalize(alias);
+        if (a && raw.indexOf(a) >= 0){
+          hits.push({
+            key: key,
+            rel: rel,
+            score: a.length
+          });
+        }
+      });
+    });
+
+    if (!hits.length) return {status:'none'};
+
+    hits.sort(function(a,b){ return b.score - a.score; });
+
+    var best = hits[0].score;
+    var keys = [];
+
+    hits.filter(function(h){ return h.score === best; }).forEach(function(h){
+      if (keys.indexOf(h.key) < 0) keys.push(h.key);
+    });
+
+    if (keys.length > 1){
+      return {status:'ambiguous', keys:keys};
+    }
+
+    var winner = hits.find(function(h){ return h.key === keys[0]; });
+
+    return {
+      status:'found',
+      key:winner.key,
+      rel:winner.rel
+    };
+  }
+
+  function parseAgeToken(token){
+    token = String(token || '').replace(/岁/g,'').trim();
+
+    if (/^\d{1,3}$/.test(token)) return Number(token);
+
+    if (!/^[零〇一二两三四五六七八九十]{1,4}$/.test(token)){
+      return null;
+    }
+
+    var digit = {
+      '零':0,'〇':0,'一':1,'二':2,'两':2,
+      '三':3,'四':4,'五':5,'六':6,'七':7,'八':8,'九':9
+    };
+
+    if (token.indexOf('十') < 0){
+      if (token.length === 1) return digit[token];
+
+      var str = '';
+      for (var i=0; i<token.length; i++){
+        if (digit[token[i]] === undefined) return null;
+        str += digit[token[i]];
+      }
+      return Number(str);
+    }
+
+    var parts = token.split('十');
+    var tens = parts[0] ? digit[parts[0]] : 1;
+    var ones = parts[1] ? digit[parts[1]] : 0;
+
+    if (tens === undefined || ones === undefined) return null;
+
+    return tens * 10 + ones;
+  }
+
+  function extractCorrectedAge(text){
+    var t = String(text || '');
+    var token = '(\\d{1,3}|[零〇一二两三四五六七八九十]{1,4})';
+
+    var patterns = [
+      new RegExp(
+        '(?:年龄|年纪)\\s*(?:应该是|应当是|应该为|应为|改为|改成|修正为|校正为|更正为|纠正为|调整为|设为|恢复为|为|是)\\s*' +
+        token + '\\s*岁?'
+      ),
+      new RegExp(
+        '(?:而是|其实是|实际上是|正确年龄是|实际年龄是|应当是|应该是|应该为|应为)\\s*' +
+        token + '\\s*岁?'
+      ),
+      new RegExp(
+        '(?:修正|校正|纠正|更正|改正|改回|改成|改为|调整为|设为|恢复为|改一下)[^0-9零〇一二两三四五六七八九十]{0,18}' +
+        token + '\\s*岁?'
+      )
+    ];
+
+    for (var i=0; i<patterns.length; i++){
+      var m = t.match(patterns[i]);
+      if (m){
+        var n = parseAgeToken(m[1]);
+        if (n !== null) return n;
+      }
+    }
+
+    var all = [], re = new RegExp(token + '\\s*岁', 'g'), m2;
+
+    while ((m2 = re.exec(t)) !== null){
+      var v = parseAgeToken(m2[1]);
+      if (v !== null) all.push(v);
+    }
+
+    return all.length ? all[all.length - 1] : null;
+  }
+
+  function isCorrectionIntent(text){
+    var t = String(text || '');
+
+    if (/(?:不要|别|无需|不用|暂不).{0,10}(?:修正|校正|纠正|更正|修改|调整)/.test(t)){
+      return false;
+    }
+
+    return /修正|校正|纠正|更正|改正|改一下|改成|改为|改回|调整年龄|调整为|恢复原著年龄|按原著年龄|原著设定.{0,12}年龄|年龄.{0,12}(?:不对|错误|错了|应为|应该|修正|校正|更正|纠正|改|调整)|年纪.{0,12}(?:不对|错了|应为|应该|修正|改)|应该是\s*(?:\d|[零〇一二两三四五六七八九十])|应为\s*(?:\d|[零〇一二两三四五六七八九十])|不是\s*\d{1,3}\s*岁.{0,16}(?:而是|其实是|应该)/.test(t);
+  }
+
+  function plainCopy(o){
+    try { return JSON.parse(JSON.stringify(o)); }
+    catch(e) { return o; }
+  }
+
+  function makeLock(name, age, year){
+    return {
+      name: name,
+      baseAge: age,
+      baseYear: year,
+      correctedAt: String((getState() && getState().time) || ''),
+      source: 'player-chat-correction'
+    };
+  }
+
+  function applyLockToRelation(name, rel, lock){
+    if (!rel || !lock) return false;
+
+    var year = currentYear();
+    var baseAge = Number(lock.baseAge);
+
+    if (!Number.isFinite(baseAge) || baseAge < 1 || baseAge > 150){
+      return false;
+    }
+
+    if (
+      (lock.baseYear === null ||
+       lock.baseYear === undefined ||
+       !Number.isFinite(Number(lock.baseYear))) &&
+      year !== null
+    ){
+      lock.baseYear = year;
+    }
+
+    var age = baseAge;
+
+    if (
+      year !== null &&
+      lock.baseYear !== null &&
+      lock.baseYear !== undefined &&
+      Number.isFinite(Number(lock.baseYear))
+    ){
+      age = Math.max(
+        1,
+        Math.min(150, baseAge + year - Number(lock.baseYear))
+      );
+    }
+
+    rel[LOCK_KEY] = plainCopy(lock);
+
+    rel._birthYear = (
+      lock.baseYear !== null &&
+      lock.baseYear !== undefined &&
+      Number.isFinite(Number(lock.baseYear))
+    ) ? Number(lock.baseYear) - baseAge : rel._birthYear;
+
+    rel.age = age + '岁';
+    rel.ageApprox = false;
+    rel.ageSource = 'player-chat-corrected';
+
+    if (rel._ageBaseline) delete rel._ageBaseline;
+
+    return true;
+  }
+
+  function locateByLockName(name){
+    var s = getState();
+    var rels = s && s.relations || {};
+
+    if (rels[name]) return {key:name, rel:rels[name]};
+
+    var n = normalize(name);
+    var keys = Object.keys(rels).filter(function(k){
+      var r = rels[k];
+
+      return npcAliases(k,r).some(function(a){
+        var na = normalize(a);
+        return na === n || na.indexOf(n) >= 0 || n.indexOf(na) >= 0;
+      });
+    });
+
+    if (keys.length === 1){
+      return {key:keys[0], rel:rels[keys[0]]};
+    }
+
+    return null;
+  }
+
+  function refreshAllLocks(){
+    Object.keys(REGISTRY).forEach(function(name){
+      var hit = locateByLockName(name);
+      if (hit) applyLockToRelation(hit.key, hit.rel, REGISTRY[name]);
+    });
+  }
+
+  function importLocksFromCurrentSave(){
+    // 替换而非合并，避免切换档位时把年龄校正串到另一档。
+    Object.keys(REGISTRY).forEach(function(k){ delete REGISTRY[k]; });
+
+    var s = getState();
+    var rels = s && s.relations || {};
+
+    Object.keys(rels).forEach(function(name){
+      var r = rels[name];
+      var lock = r && (r[LOCK_KEY] || r._v77AgeLock);
+
+      if (!lock || lock.enabled === false) return;
+
+      var baseAge = parseAgeToken(
+        String(lock.baseAge !== undefined ? lock.baseAge : r.age || '')
+      );
+
+      if (baseAge === null) return;
+
+      var baseYear = (
+        lock.baseYear === null || lock.baseYear === undefined
+      ) ? currentYear() : Number(lock.baseYear);
+
+      var converted = {
+        name: name,
+        baseAge: baseAge,
+        baseYear: Number.isFinite(baseYear) ? baseYear : null,
+        correctedAt: lock.correctedAt || String(s.time || ''),
+        source: 'player-chat-correction'
+      };
+
+      REGISTRY[name] = converted;
+      applyLockToRelation(name, r, converted);
+    });
+  }
+
+  function hasKnownCanonMention(text){
+    var n = normalize(text);
+
+    return Object.keys(CANONICAL_ALIASES).some(function(k){
+      return CANONICAL_ALIASES[k].some(function(a){
+        return n.indexOf(normalize(a)) >= 0;
+      });
+    });
+  }
+
+  function addSystem(text){
+    try {
+      if (typeof addEntry === 'function'){
+        addEntry('年龄校正','system',text);
+      } else if (typeof toast === 'function'){
+        toast(text);
+      }
+    } catch(e){
+      try { toast(text); } catch(_) {}
+    }
+  }
+
+  function syncPromptFacts(){
+    try {
+      if (typeof GM_SYSTEM !== 'string') return;
+
+      var marker = '【V78·玩家校正年龄事实】';
+      var at = GM_SYSTEM.indexOf(marker);
+
+      if (at >= 0){
+        GM_SYSTEM = GM_SYSTEM.slice(0,at).trimEnd();
+      }
+
+      var rows = [];
+
+      Object.keys(REGISTRY).forEach(function(name){
+        var hit = locateByLockName(name);
+        if (hit && hit.rel){
+          rows.push('· ' + hit.key + '：' + String(hit.rel.age || '未知'));
+        }
+      });
+
+      if (rows.length){
+        GM_SYSTEM += '\n\n' + marker +
+          '\n以下 NPC 年龄已由玩家明确校正，是当前档位的权威事实；不得在正文或 npcUpdates 中擅自改写。只允许随游戏时间跨入新年份更新年龄。\n' +
+          rows.join('\n');
+      }
+    } catch(e){
+      console.warn('[V78] 年龄事实提示同步失败',e);
+    }
+  }
+
+  function applyCorrection(hit, age, originalText){
+    var year = currentYear();
+    var oldAge = String(hit.rel.age || '未知');
+
+    var lock = makeLock(hit.key, age, year);
+    REGISTRY[hit.key] = lock;
+
+    applyLockToRelation(hit.key, hit.rel, lock);
+    refreshAllLocks();
+    syncPromptFacts();
+
+    try {
+      if (typeof renderUI === 'function') renderUI();
+    } catch(e){}
+
+    addSystem(
+      '已按对话指令修正【' + hit.key + '】的年龄：' +
+      oldAge + ' → ' + hit.rel.age +
+      '。这属于档案校正，不会推进游戏时间；此后同一年内保持不变，' +
+      '只有游戏时间跨入新年份时才增加一岁。'
+    );
+
+    try {
+      if (typeof toast === 'function'){
+        toast(hit.key + ' 的年龄已校正为 ' + hit.rel.age);
+      }
+    } catch(e){}
+
+    console.log('[V78] 年龄校正指令已执行',{
+      npc:hit.key,
+      age:hit.rel.age,
+      year:year,
+      command:originalText
+    });
+  }
+
+  // 如果之前试贴过 V77 的档案按钮版，隐藏旧按钮，统一使用对话输入框。
+  try {
+    if (!document.getElementById('v78HideOldAgeButton')){
+      var style = document.createElement('style');
+      style.id = 'v78HideOldAgeButton';
+      style.textContent = '#v77AgeEditor{display:none!important;}';
+      document.head.appendChild(style);
+    }
+  } catch(e){}
+
+  // 只恢复当前加载档位中已经保存的年龄锁。
+  try {
+    importLocksFromCurrentSave();
+    refreshAllLocks();
+    syncPromptFacts();
+  } catch(e){}
+
+  // 在原 execute 最外层识别命令；普通行动仍走原流程。
+  if (
+    typeof window.execute === 'function' &&
+    !window.execute.__v78ChatAgeCommand
+  ){
+    var oldExecute = window.execute;
+
+    var wrappedExecute = async function(){
+      if (typeof running !== 'undefined' && running){
+        return oldExecute.apply(this,arguments);
+      }
+
+      var input = document.getElementById('actionInput');
+      var text = String(input && input.value || '').trim();
+
+      if (!text || !isCorrectionIntent(text)){
+        return oldExecute.apply(this,arguments);
+      }
+
+      var age = extractCorrectedAge(text);
+
+      if (age === null || age < 1 || age > 150){
+        return oldExecute.apply(this,arguments);
+      }
+
+      var hit = findMentionedNpc(text);
+
+      if (hit.status === 'none'){
+        if (hasKnownCanonMention(text)){
+          if (input) input.value = '';
+
+          addSystem(
+            '检测到年龄校正指令，但当前档位的人物档案中没有找到对应 NPC。' +
+            '请先让该角色进入人物档案，再用“修正克莱恩年龄为22岁”这样的句式校正。'
+          );
+
+          return;
+        }
+
+        return oldExecute.apply(this,arguments);
+      }
+
+      if (hit.status === 'ambiguous'){
+        if (input) input.value = '';
+
+        addSystem(
+          '这条年龄校正指令匹配到多个 NPC：' +
+          hit.keys.join('、') +
+          '。请使用更完整的姓名重新输入，例如“修正克莱恩·莫雷蒂年龄为22岁”。'
+        );
+
+        return;
+      }
+
+      if (input) input.value = '';
+
+      applyCorrection(hit, age, text);
+      return;
+    };
+
+    wrappedExecute.__v78ChatAgeCommand = true;
+    window.execute = wrappedExecute;
+  }
+
+  // AI 更新之后重新应用年龄锁，防止 npcUpdates 覆盖玩家修正。
+  if (
+    typeof window.applyAI === 'function' &&
+    !window.applyAI.__v78ChatAgeLock
+  ){
+    var oldApplyAI = window.applyAI;
+
+    var wrappedApplyAI = function(){
+      var result = oldApplyAI.apply(this,arguments);
+
+      try {
+        refreshAllLocks();
+        syncPromptFacts();
+      } catch(e){
+        console.warn('[V78] AI后年龄锁恢复失败',e);
+      }
+
+      return result;
+    };
+
+    wrappedApplyAI.__v78ChatAgeLock = true;
+    window.applyAI = wrappedApplyAI;
+  }
+
+  // 读档时重建年龄锁，防止不同存档之间相互继承。
+  if (
+    typeof window.applySave === 'function' &&
+    !window.applySave.__v78ChatAgeSave
+  ){
+    var oldApplySave = window.applySave;
+
+    var wrappedApplySave = function(){
+      var result = oldApplySave.apply(this,arguments);
+
+      try {
+        importLocksFromCurrentSave();
+        refreshAllLocks();
+        syncPromptFacts();
+      } catch(e){
+        console.warn('[V78] 读档年龄锁重建失败',e);
+      }
+
+      return result;
+    };
+
+    wrappedApplySave.__v78ChatAgeSave = true;
+    window.applySave = wrappedApplySave;
+  }
+
+  // 新开局时清空当前页面的年龄锁，不把旧档修正带入新档。
+  if (
+    typeof window.resetWorldState === 'function' &&
+    !window.resetWorldState.__v78ChatAgeReset
+  ){
+    var oldReset = window.resetWorldState;
+
+    var wrappedReset = function(){
+      Object.keys(REGISTRY).forEach(function(k){ delete REGISTRY[k]; });
+      syncPromptFacts();
+      return oldReset.apply(this,arguments);
+    };
+
+    wrappedReset.__v78ChatAgeReset = true;
+    window.resetWorldState = wrappedReset;
+  }
+
+  // 刷新 UI 前只更新年龄数据，不推进时间。
+  if (
+    typeof window.renderUI === 'function' &&
+    !window.renderUI.__v78ChatAgeRender
+  ){
+    var oldRender = window.renderUI;
+
+    var wrappedRender = function(){
+      try {
+        refreshAllLocks();
+        syncPromptFacts();
+      } catch(e){}
+
+      return oldRender.apply(this,arguments);
+    };
+
+    wrappedRender.__v78ChatAgeRender = true;
+    window.renderUI = wrappedRender;
+  }
+
+  try { syncPromptFacts(); } catch(e){}
+
+  // 仅供诊断；日常使用不需要输入这条命令。
+  window.v78AgeLockCheck = function(){
+    var s = getState();
+    var rels = s && s.relations || {};
+    var rows = [];
+
+    Object.keys(rels).forEach(function(n){
+      var r = rels[n];
+
+      if (r && r[LOCK_KEY]){
+        rows.push({
+          name:n,
+          age:r.age,
+          baseAge:r[LOCK_KEY].baseAge,
+          baseYear:r[LOCK_KEY].baseYear,
+          birthYear:r._birthYear
+        });
+      }
+    });
+
+    console.log('[V78 年龄锁]',rows);
+    return rows;
+  };
+
+  window.__V78_CHAT_AGE_CORRECTION__ = true;
+
+  console.log(
+    '[V78] 对话输入框年龄校正已挂载。示例：修正克莱恩年龄为22岁'
+  );
+})();
+/* ▲▲▲ V78 完 ▲▲▲ */
 </script>
 </body>
 </html>
