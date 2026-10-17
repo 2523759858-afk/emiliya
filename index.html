@@ -27953,6 +27953,495 @@ console.log(
   );
 })();
 /* ▲▲▲ V78 完 ▲▲▲ */
+/* ▼▼▼ V79 · AI延迟复核写录 + 房产落地 + 货币防归零 ▼▼▼ */
+(function(){
+  'use strict';
+  if (window.__V79_AI_LEDGER_PATCH__) return;
+  window.__V79_AI_LEDGER_PATCH__ = true;
+
+  var QUEUE_KEY = '_v79LedgerQueue';
+  var COUNTER_KEY = '_v79LedgerCounter';
+  var RULE_MARK = '【V79·下一轮AI账本复核】';
+
+  function S(){
+    return (typeof state !== 'undefined' && state) || window.state || null;
+  }
+  function safeCopy(x){
+    try { return JSON.parse(JSON.stringify(x)); }
+    catch(e) { return x; }
+  }
+  function str(x){ return String(x == null ? '' : x); }
+  function norm(x){
+    return str(x).replace(/<[^>]*>/g,' ')
+      .replace(/[\s　·・•,，。．.、:：;；!！?？'"“”‘’（）()\[\]【】{}]/g,'')
+      .toLowerCase();
+  }
+  function asNum(v, fallback){
+    var n = Number(v);
+    return Number.isFinite(n) ? n : fallback;
+  }
+  function narrativeOf(d){
+    var n = d && d.narrative || {};
+    return [n.scene,n.result,n.world].filter(Boolean).map(str).join('\n\n');
+  }
+  function currency(){
+    var s = S() || {}, c = s.currency || {};
+    return {gn:asNum(c.gn,0),ss:asNum(c.ss,0),bs:asNum(c.bs,0)};
+  }
+  function formatMoney(c){
+    c = c || currency();
+    return Math.max(0,Math.floor(asNum(c.gn,0)))+'金镑 '+
+      Math.max(0,Math.floor(asNum(c.ss,0)))+'苏勒 '+
+      Math.max(0,Math.floor(asNum(c.bs,0)))+'便士';
+  }
+  function syncMoneyString(){
+    var s = S();
+    if(s) s.money = formatMoney(s.currency);
+  }
+
+  // 解析所有明确出现的币种；不存在的币种不自动归零。
+  function parseMoneyParts(text){
+    var s = str(text), out = {}, m;
+    m = s.match(/([\d,]+(?:\.\d+)?)\s*(?:金镑|镑|金钱|金)/);
+    if(m) out.gn = Number(m[1].replace(/,/g,''));
+
+    m = s.match(/([\d,]+(?:\.\d+)?)\s*(?:苏勒|苏)/);
+    if(m) out.ss = Number(m[1].replace(/,/g,''));
+
+    m = s.match(/([\d,]+(?:\.\d+)?)\s*(?:便士|便)/);
+    if(m) out.bs = Number(m[1].replace(/,/g,''));
+
+    out.any = ['gn','ss','bs'].some(function(k){
+      return Object.prototype.hasOwnProperty.call(out,k);
+    });
+    out.complete = ['gn','ss','bs'].every(function(k){
+      return Object.prototype.hasOwnProperty.call(out,k);
+    });
+    return out;
+  }
+  function sameSpecifiedMoney(parts, cur){
+    return (!Object.prototype.hasOwnProperty.call(parts,'gn') || parts.gn===cur.gn) &&
+      (!Object.prototype.hasOwnProperty.call(parts,'ss') || parts.ss===cur.ss) &&
+      (!Object.prototype.hasOwnProperty.call(parts,'bs') || parts.bs===cur.bs);
+  }
+  function quoteGrounded(quote, text){
+    var q = norm(quote), t = norm(text);
+    return q.length >= 8 && t.indexOf(q) >= 0;
+  }
+  function getQueue(){
+    var s = S();
+    if(!s) return [];
+    if(!Array.isArray(s[QUEUE_KEY])) s[QUEUE_KEY] = [];
+    return s[QUEUE_KEY];
+  }
+  function hasLedgerTopic(text){
+    return /晋升|晋级|进阶|突破|晋阶|序列\s*[0-9一二三四五六七八九十]|魔药消化|途径变化|继承|买下|购入|购买了|获得了.{0,8}(?:房|宅邸|庄园|府邸|公馆|房子|公寓)|赠与|赠送了.{0,8}(?:房|宅邸|庄园|府邸|公馆|房子|公寓)|授予.{0,8}(?:房|宅邸|庄园|府邸|公馆|房子|公寓)|宅邸|庄园|府邸|房产|房屋|住房|住宅|公馆|房子|公寓|金镑|苏勒|便士|工资到账|领取薪水|获得报酬|收到赏金|支付了|付给|花费了|买下|卖出|出售|交易完成|收入|支出/.test(str(text));
+  }
+  function currentNPCLedger(text){
+    var s = S() || {}, rels = s.relations || {}, rows = [];
+    Object.keys(rels).forEach(function(name){
+      if(str(text).indexOf(name)>=0){
+        rows.push({
+          name:name,
+          path:rels[name] && rels[name].path || '',
+          seq:rels[name] && rels[name].seq || ''
+        });
+      }
+    });
+    return rows.slice(0,25);
+  }
+  function currentHouses(){
+    var s = S() || {};
+    return (Array.isArray(s.houses)?s.houses:[]).map(function(h){
+      return {
+        name:h.name,type:h.type,acquisition:h.acquisition,
+        location:h.location,ownership:h.ownership
+      };
+    }).slice(0,30);
+  }
+  function buildPending(d, action, beforeCur){
+    var s = S();
+    if(!s) return null;
+    var narrative = narrativeOf(d);
+    if(!narrative || !hasLedgerTopic(narrative)) return null;
+
+    s[COUNTER_KEY] = Math.max(0,Number(s[COUNTER_KEY])||0)+1;
+    return {
+      id:'v79-'+s[COUNTER_KEY],
+      time:str(s.time),
+      action:str(action).slice(0,1200),
+      narrative:narrative.slice(-7500),
+      currentNPC:currentNPCLedger(narrative),
+      houses:currentHouses(),
+      currency:currency(),
+      moneyBefore:beforeCur || null,
+      createdAt:Date.now()
+    };
+  }
+
+  var AI_RULES = [
+    RULE_MARK,
+    '本补丁要求你在下一次推演时复核上一轮已经生成的剧情，只由你作为GM判断事件是否真正发生；前端不通过邻近词语自行推断晋升、房产或交易。',
+    '若存在待复核上一轮，请首先对照其实际生成的叙事与当前结构化账本。玩家提出的计划、愿望、假设、夸口或自述不等于事件已发生；必须看上一轮叙事是否明确确认。已经正确写入账本的内容不要重复写入。',
+    '当上一轮叙事明确证明某个已登记NPC确实晋升时，即使前端上一轮因防误改保护没有更新，也请在 stateChanges.ledgerReview.npcSequenceUpdates 返回 {name,decision:"confirmed",seq,path,reason,evidence}。evidence 必须引用上一轮叙事中证明该NPC本人晋升的原句或足够长的原文片段；不要把玩家说“我已是序列X”误归给旁边的NPC。若只是不确定或只是计划，返回 decision:"no_change"。',
+    '若上一轮叙事明确发生了真实取得房产但房产列表漏记，请在 stateChanges.ledgerReview.houseAcquire 返回已确认房产实体。必须给出 name、type:"residence"、acquisition（birthright/inheritance/purchase/gift/organization_grant/official_grant/seize/conquest/other 中的一个）、evidence、reason，以及可判断时的 location、owner、ownership、playerRoom、rooms、setPrimary。租房、旅馆、借宿、短期藏身或仅有使用权绝不能写成自有房产。',
+    '若上一轮叙事明确发生货币交易且账面未反映，请在 stateChanges.ledgerReview.moneyCorrection 返回 {apply:true,balance:{gn,ss,bs},reason,evidence}，balance 是该交易完成后应有的完整余额。若当前账面已经正确，必须返回 apply:false，不能重复加减。evidence 必须引用上一轮叙事中真实完成交易的原文。',
+    '有待复核时，请在 stateChanges.ledgerReview 中返回 reviewedPreviousTurn:true，即使结论是没有遗漏也要确认已审阅。没有待复核时，不需要输出 ledgerReview。',
+    '当前轮发生新的晋升、房产取得或货币交易时，仍须正常更新当前轮的 npcUpdates、stateChanges.houseAcquire、stateChanges.moneyChange / stateChanges.money。不能因为复核上一轮而漏掉当前轮事件。',
+    'stateChanges.money 若输出，应尽量给出完整余额“X金镑 Y苏勒 Z便士”。只列出一种币值时代表只更新该显式币种，其他未列出的币种保持原值。没有真实交易时不要改钱。',
+    '待复核时的JSON位置与字段必须是 stateChanges.ledgerReview：{reviewedPreviousTurn:true,npcSequenceUpdates:[{name:"完整NPC姓名",decision:"confirmed或no_change",seq:"序列X",path:"途径",reason:"判断理由",evidence:"上一轮实际叙事原文"}],houseAcquire:[{name:"房产名",type:"residence",acquisition:"inheritance等允许类型",decision:"confirmed",reason:"取得理由",evidence:"上一轮实际叙事原文"}],moneyCorrection:{apply:true或false,balance:{gn:0,ss:0,bs:0},reason:"核对理由",evidence:"上一轮交易原文"}}。只填有根据的字段；reviewedPreviousTurn为true表示已审阅最早的一条待复核事件。'
+  ].join('\n');
+
+  function injectPrompt(messages){
+    if(!Array.isArray(messages)) return messages;
+    var isGame = messages.some(function(m){
+      return m && m.role==='system' &&
+        /诡秘之主|GM_SYSTEM|世界书 v5\.0|V68·住宅与回家行动规则/.test(str(m.content));
+    });
+    if(!isGame) return messages;
+
+    var out = messages.map(function(m){
+      if(!m || typeof m!=='object') return m;
+      var copy = {};
+      Object.keys(m).forEach(function(k){ copy[k]=m[k]; });
+      return copy;
+    });
+    var q = getQueue(), pending = q.length ? q[0] : null;
+    var add = AI_RULES;
+
+    if(pending){
+      add += '\n\n【V79·待复核上一轮事件｜编号 '+pending.id+'】'+
+        '\n上一轮游戏时间：'+str(pending.time)+
+        '\n玩家行动（只是意图，不能单独证明结果）：\n'+str(pending.action).slice(-1000)+
+        '\n上一轮实际生成的叙事（请以它为证据）：\n'+str(pending.narrative).slice(-6500)+
+        '\n当前NPC结构化记录：\n'+JSON.stringify(pending.currentNPC||[])+
+        '\n当前已登记房产：\n'+JSON.stringify(pending.houses||[])+
+        '\n上一轮行动前货币：\n'+JSON.stringify(pending.moneyBefore||{})+
+        '\n当前货币账本：\n'+JSON.stringify(pending.currency||currency())+
+        '\n请只复核这个编号对应的上一轮事件。若已正确记录，就返回 reviewedPreviousTurn:true 且不作重复修改；若缺漏，给出有原文证据的结构化修复。';
+    }
+
+    var ix = out.findIndex(function(m){
+      return m && m.role==='system' && typeof m.content==='string';
+    });
+    if(ix<0) out.unshift({role:'system',content:add});
+    else if(str(out[ix].content).indexOf(RULE_MARK)<0){
+      out[ix].content += '\n\n'+add;
+    }
+    return out;
+  }
+
+  // 延迟复核提示只进入游戏请求，不改GM_SYSTEM本体，也不改其他模块提示。
+  if(typeof window.callAPI==='function' && !window.callAPI.__v79LedgerPrompt){
+    var oldCallAPI = window.callAPI;
+    var wrappedCallAPI = async function(messages, cfg){
+      var outgoing;
+      try {
+        outgoing = injectPrompt(messages);
+      } catch(e) {
+        console.warn('[V79] 提示注入失败',e);
+        outgoing = messages;
+      }
+      return oldCallAPI.call(this,outgoing,cfg);
+    };
+    wrappedCallAPI.__v79LedgerPrompt = true;
+    window.callAPI = wrappedCallAPI;
+  }
+
+  // 只更新字符串里明确出现的币种；未出现的币种保留原值。
+  function safeParseMoney(text){
+    var s = S();
+    if(!s || !text) return;
+    var p = parseMoneyParts(text);
+    if(!p.any) return;
+    var old = s.currency || {gn:0,ss:0,bs:0};
+    s.currency = {
+      gn:Object.prototype.hasOwnProperty.call(p,'gn')?p.gn:asNum(old.gn,0),
+      ss:Object.prototype.hasOwnProperty.call(p,'ss')?p.ss:asNum(old.ss,0),
+      bs:Object.prototype.hasOwnProperty.call(p,'bs')?p.bs:asNum(old.bs,0)
+    };
+  }
+  if(typeof window.parseMoney==='function' && !window.parseMoney.__v79SafePartial){
+    safeParseMoney.__v79SafePartial = true;
+    window.parseMoney = safeParseMoney;
+    try { parseMoney = safeParseMoney; } catch(e) {}
+  }
+
+  function transactionEvidence(text){
+    return /支付了|付给|花费了|花了|买下|购买了|购入了|付出|付款完成|交易完成|出售了|卖出了|售出|收到薪水|领取薪水|工资到账|获得报酬|收到赏金|领取奖金|获得酬金|收入到账|收到赔偿|赔付|被偷走|被抢走|丢失了.{0,12}(?:钱|钱包|金镑|苏勒|便士)|归还了.{0,12}(?:钱|金镑|苏勒|便士)/.test(str(text));
+  }
+  function amountFromDelta(base, delta){
+    var c = {gn:asNum(base.gn,0),ss:asNum(base.ss,0),bs:asNum(base.bs,0)};
+    var d = delta || {};
+    c.gn += asNum(d.gn !== undefined ? d.gn : d.gnDelta,0);
+    c.ss += asNum(d.ss !== undefined ? d.ss : d.ssDelta,0);
+    c.bs += asNum(d.bs !== undefined ? d.bs : d.bsDelta,0);
+    var total = Math.round(c.gn*240+c.ss*12+c.bs);
+    if(!Number.isFinite(total)||total<0) return null;
+    return {gn:Math.floor(total/240),ss:Math.floor((total%240)/12),bs:total%12};
+  }
+  function setCurrency(c){
+    var s = S();
+    if(!s || !c) return;
+    s.currency = {
+      gn:Math.max(0,Math.floor(asNum(c.gn,0))),
+      ss:Math.max(0,Math.floor(asNum(c.ss,0))),
+      bs:Math.max(0,Math.floor(asNum(c.bs,0)))
+    };
+    syncMoneyString();
+  }
+
+  function normalizeNPCName(name){ return norm(name); }
+  function findNPC(name){
+    var s = S() || {}, rels = s.relations || {}, target = normalizeNPCName(name), keys = Object.keys(rels);
+    if(rels[name]) return {key:name,rel:rels[name]};
+    var hits = keys.filter(function(k){
+      var r = rels[k] || {};
+      var aliases = [k,r.name,r.fullName,r.displayName,r.nickname,r.alias]
+        .filter(Boolean).map(normalizeNPCName);
+      return aliases.some(function(a){
+        return a===target || a.indexOf(target)>=0 || target.indexOf(a)>=0;
+      });
+    });
+    if(hits.length!==1) return null;
+    return {key:hits[0],rel:rels[hits[0]]};
+  }
+  function getSeqNum(v){
+    var m = str(v).match(/序列\s*([0-9])/);
+    if(m) return Number(m[1]);
+    if(/真神|序列0/.test(str(v))) return 0;
+    if(/天使之王/.test(str(v))) return 1;
+    return 99;
+  }
+  function setFactMap(mapName, name, seq, path){
+    var s = S();
+    if(!s) return;
+    var map = s[mapName];
+    if(!map || typeof map!=='object') map = s[mapName] = {};
+    var keys = Object.keys(map), key = keys.find(function(k){
+      var a=normalizeNPCName(k), b=normalizeNPCName(name);
+      return a===b || a.indexOf(b)>=0 || b.indexOf(a)>=0;
+    });
+    if(!key) key=name;
+
+    if(mapName==='_v58NpcFacts'){
+      var fact = map[key] && typeof map[key]==='object' ? map[key] : {};
+      fact.seqNum = getSeqNum(seq);
+      fact.seqText = str(seq);
+      fact.seqSource = 'v79-ai-delayed-review';
+      if(path) fact.path = str(path);
+      map[key] = fact;
+    }else{
+      // V67事实格式因版本而异，只修改已存在的序列字段。
+      var v = map[key];
+      if(v && typeof v==='object'){
+        if(v.value && typeof v.value==='object') v=v.value;
+        if('seqNum' in v) v.seqNum = getSeqNum(seq);
+        if('seqText' in v) v.seqText = str(seq);
+        if(path && 'path' in v) v.path = str(path);
+      }
+    }
+  }
+  function validDecision(x){
+    return !!(x &&
+      (x.confirmed===true || /^(?:confirmed|confirm|已确认|确认|晋升已确认)$/i.test(str(x.decision))) &&
+      str(x.reason).trim() && str(x.evidence).trim());
+  }
+  function applyReviewedSequences(review, pending){
+    var s = S();
+    if(!s || !Array.isArray(review.npcSequenceUpdates)) return;
+
+    review.npcSequenceUpdates.forEach(function(x){
+      if(!validDecision(x)) return;
+      if(!quoteGrounded(x.evidence,pending.narrative)) return;
+      var hit = findNPC(x.name);
+      if(!hit || !hit.rel) return;
+
+      var oldNum = getSeqNum(hit.rel.seq), newNum = getSeqNum(x.seq);
+      // 只处理AI复核确认的晋升，不处理降级/胡乱换序列。
+      if(newNum===99 || oldNum===99 || newNum>=oldNum) return;
+
+      hit.rel.seq = str(x.seq);
+      if(x.path) hit.rel.path = str(x.path);
+      setFactMap('_v58NpcFacts',hit.key,x.seq,x.path||hit.rel.path);
+      setFactMap('_v67SafeFacts',hit.key,x.seq,x.path||hit.rel.path);
+
+      console.log('[V79] 下一轮AI复核后登记NPC晋升：',hit.key,hit.rel.seq);
+    });
+  }
+  function validHouseEvidence(x,pending){
+    if(!x || !str(x.name).trim() || !validDecision(x)) return false;
+    if(!quoteGrounded(x.evidence,pending.narrative)) return false;
+
+    var acq = str(x.acquisition||'').toLowerCase();
+    if(!/^(birthright|inheritance|purchase|gift|organization_grant|official_grant|seize|conquest|other)$/.test(acq)) return false;
+
+    // 只检查权属字段，避免叙事证据中提到“不是租房”就误拒绝继承。
+    var ownershipText = [x.name,x.type,x.acquisition,x.ownership,x.owner,x.relation].map(str).join(' ');
+    if(/租住|租房|租下|借住|借宿|旅馆|旅店|酒店|暂住|临时住所|短租|长租|租赁/.test(ownershipText)) return false;
+    return true;
+  }
+  function mergeReviewedHouses(working, review, pending){
+    if(!review || !Array.isArray(review.houseAcquire)) return;
+    var good = review.houseAcquire.filter(function(x){
+      return validHouseEvidence(x,pending);
+    });
+    if(!good.length) return;
+
+    if(!working.stateChanges) working.stateChanges = {};
+    var sc = working.stateChanges;
+    if(!Array.isArray(sc.houseAcquire)) sc.houseAcquire = [];
+
+    good.forEach(function(h){
+      var clean = {};
+      ['name','type','acquisition','ownership','owner','relation','location','playerRoom','rooms','facilities','security','comfort','storage','status','setPrimary']
+        .forEach(function(k){ if(h[k]!==undefined) clean[k]=h[k]; });
+
+      if(!sc.houseAcquire.some(function(e){
+        return e && norm(e.name)===norm(clean.name);
+      })){
+        sc.houseAcquire.push(clean);
+      }
+    });
+  }
+  function applyMoneyCorrection(review, pending){
+    if(!review || !review.moneyCorrection) return;
+    var x = review.moneyCorrection;
+    if(x.apply!==true || !str(x.reason).trim() || !quoteGrounded(x.evidence,pending.narrative)) return;
+
+    var b = x.balance || {};
+    var gn=Number(b.gn), ss=Number(b.ss), bs=Number(b.bs);
+    if(!Number.isFinite(gn)||!Number.isFinite(ss)||!Number.isFinite(bs)||gn<0||ss<0||bs<0) return;
+
+    var desired = {gn:Math.floor(gn),ss:Math.floor(ss),bs:Math.floor(bs)};
+    var now = currency();
+    if(now.gn===desired.gn && now.ss===desired.ss && now.bs===desired.bs) return;
+
+    setCurrency(desired);
+    console.log('[V79] 已按AI对上一轮交易的复核修正货币余额',desired);
+  }
+  function prepareCurrentMoney(working){
+    var sc = working && working.stateChanges;
+    if(!sc || typeof sc!=='object') return;
+
+    var narr = narrativeOf(working), cur = currency();
+    var moneyChange = sc.moneyChange;
+
+    if(moneyChange && moneyChange.occurred===true &&
+       str(moneyChange.reason).trim() &&
+       quoteGrounded(moneyChange.evidence,narr) &&
+       transactionEvidence(moneyChange.evidence)){
+      var delta = moneyChange.delta || moneyChange;
+      var computed = amountFromDelta(cur,delta);
+      if(computed){
+        sc.money = formatMoney(computed);
+        sc.moneyChange.confirmed = true;
+      }else{
+        delete sc.moneyChange;
+      }
+    }
+
+    if(sc.money===undefined || sc.money===null || str(sc.money).trim()==='') return;
+
+    var parts = parseMoneyParts(sc.money);
+    if(!parts.any){ delete sc.money; return; }
+
+    if(moneyChange && moneyChange.occurred===true && sc.moneyChange && sc.moneyChange.confirmed===true) return;
+
+    var matches = sameSpecifiedMoney(parts,cur);
+    if(!transactionEvidence(narr) && !matches){
+      console.warn('[V79] 拦截无交易依据的余额覆盖，保留原货币账本。',sc.money,cur);
+      delete sc.money;
+      return;
+    }
+
+    // 省略的币种补成当前余额，避免旧 parseMoney 将其强制清零。
+    sc.money = formatMoney({
+      gn:Object.prototype.hasOwnProperty.call(parts,'gn')?parts.gn:cur.gn,
+      ss:Object.prototype.hasOwnProperty.call(parts,'ss')?parts.ss:cur.ss,
+      bs:Object.prototype.hasOwnProperty.call(parts,'bs')?parts.bs:cur.bs
+    });
+  }
+
+  // 最外层 applyAI：先处理上一轮AI复核，再正常执行原有所有模块。
+  if(typeof window.applyAI==='function' && !window.applyAI.__v79LedgerApply){
+    var oldApplyAI = window.applyAI;
+
+    var wrappedApplyAI = function(data, action){
+      var working = safeCopy(data||{});
+      if(!working || typeof working!=='object') working = {};
+
+      var q = getQueue();
+      var pending = q.length ? q[0] : null;
+      var review = working.stateChanges && working.stateChanges.ledgerReview;
+      var acknowledged = !!(pending && review && review.reviewedPreviousTurn===true);
+
+      // 先应用上一轮的复核结论，再运行当前轮原有处理链。
+      if(acknowledged){
+        try{
+          applyReviewedSequences(review,pending);
+          mergeReviewedHouses(working,review,pending);
+          applyMoneyCorrection(review,pending);
+        }catch(e){
+          console.warn('[V79] 上一轮账本复核失败，保留其余原流程',e);
+        }
+      }
+
+      prepareCurrentMoney(working);
+      var moneyBeforeCurrent = currency();
+      var result = oldApplyAI.call(this,working,action);
+
+      function finish(r){
+        try{
+          var live = S();
+          if(!live) return r;
+
+          var queue = getQueue();
+          if(acknowledged && queue.length && queue[0].id===pending.id) queue.shift();
+
+          // 只创建待核对事项，不在此处凭正文关键词直接修改NPC、房产或钱。
+          var newPending = buildPending(working,action,moneyBeforeCurrent);
+          if(newPending){
+            queue.push(newPending);
+            while(queue.length>4) queue.shift();
+          }
+          live[QUEUE_KEY] = queue;
+
+          syncMoneyString();
+          try{ if(typeof renderCurrency==='function') renderCurrency(); }catch(e){}
+          try{ if(typeof renderHouses==='function') renderHouses(); }catch(e){}
+        }catch(e){
+          console.warn('[V79] 账本收尾失败，不影响其他板块',e);
+        }
+        return r;
+      }
+
+      if(result && typeof result.then==='function') return result.then(finish);
+      return finish(result);
+    };
+
+    wrappedApplyAI.__v79LedgerApply = true;
+    window.applyAI = wrappedApplyAI;
+  }
+
+  window.v79LedgerCheck = function(){
+    var s = S() || {};
+    var r = {
+      pending:(s[QUEUE_KEY]||[]).map(function(p){
+        return {id:p.id,time:p.time,action:p.action,narrative:(p.narrative||'').slice(-300)};
+      }),
+      currency:currency(),
+      money:s.money,
+      houses:currentHouses(),
+      guard:!!window.__V79_AI_LEDGER_PATCH__
+    };
+    console.log('[V79账本检查]',r);
+    return r;
+  };
+
+  console.log('%c[V79] 已安装：下一轮AI复核NPC晋升/房产/货币；保留原有前端防护与其他板块。','color:#0f766e;font-weight:700');
+})();
+/* ▲▲▲ V79 完 ▲▲▲ */
 </script>
 </body>
 </html>
