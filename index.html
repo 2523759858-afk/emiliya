@@ -268,7 +268,7 @@ header{background:#f3ecdb;border-bottom:1.5px solid var(--bd-dark);padding:8px 1
     <datalist id="startModelList"></datalist>
     <label>网络连接模式</label>
     <select id="startCfgProxyMode">
-      <option value="auto">智能自动（明确拒绝时切换；结果不明时停止）</option>
+      <option value="auto">智能自动 (推荐 · 失败时自动切换代理)</option>
       <option value="direct">直接连接 (Direct)</option>
       <option value="proxy1">跨域穿透代理 1 (corsproxy.io)</option>
       <option value="proxy2">跨域穿透代理 2 (allorigins.win)</option>
@@ -358,7 +358,7 @@ header{background:#f3ecdb;border-bottom:1.5px solid var(--bd-dark);padding:8px 1
       <datalist id="cfgModelList"></datalist>
       <label>连接方式</label>
       <select id="cfgProxyMode">
-        <option value="auto">智能自动（安全错误切换；不明结果不重发）</option>
+        <option value="auto">智能自动 (失败时自动切换)</option>
         <option value="direct">直接连接 (Direct)</option>
         <option value="proxy1">跨域穿透代理 1 (corsproxy.io)</option>
         <option value="proxy2">跨域穿透代理 2 (allorigins.win)</option>
@@ -795,9 +795,9 @@ function getSealBadge(s) {
 }
 
 /* ============================================================
-   第五部分 · API 层（升级：安全自动切换与请求重试保护）
+   第五部分 · API 层（升级：智能自动降级 + 重试）
    ============================================================ */
-var CFG_KEY = 'guimi_api_v14_ultimate__requesttest';
+var CFG_KEY = 'guimi_api_v14_ultimate';
 var cfg = { baseUrl: 'https://api.deepseek.com/v1', apiKey: '', model: 'deepseek-chat', proxyMode: 'auto', temperature: 0.7, maxTokens: 8000 };
 var PRESETS = {
   deepseek: { baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-chat' },
@@ -853,12 +853,8 @@ function buildTargets(baseUrl, path, proxyMode) {
 
 async function unifiedRequest(url, key, body, timeout) {
   timeout = timeout || 45000;
-  var controller = window.AbortController ? new window.AbortController() : null;
-  var timedOut = false;
-  var timer = setTimeout(function(){
-    timedOut = true;
-    if (controller) { try { controller.abort(); } catch (ignoreAbort) {} }
-  }, timeout);
+  var controller = window.AbortController ? new AbortController() : null;
+  var timer = setTimeout(function(){ if (controller) controller.abort(); }, timeout);
   try {
     var resp = await fetch(url, {
       method: body ? 'POST' : 'GET',
@@ -866,98 +862,25 @@ async function unifiedRequest(url, key, body, timeout) {
       body: body ? JSON.stringify(body) : undefined,
       signal: controller ? controller.signal : undefined
     });
-    // Keep the timeout active while reading the complete response body.
-    var responseText = await resp.text();
-    if (!resp.ok) {
-      var httpError = new Error('HTTP ' + resp.status + ': ' + responseText.slice(0, 150));
-      httpError.status = resp.status;
-      throw httpError;
-    }
-    try {
-      return JSON.parse(responseText);
-    } catch (parseError) {
-      var jsonError = new Error('API 响应不是有效 JSON：' + responseText.slice(0, 120));
-      jsonError.code = 'INVALID_API_JSON';
-      throw jsonError;
-    }
-  } catch (err) {
-    var errorText = String(err && err.message || err || '未知请求错误');
-    if (timedOut) {
-      var timeoutError = new Error('请求超时（' + Math.ceil(timeout / 1000) + ' 秒），已中止等待；服务端是否已处理本次请求无法确认。');
-      timeoutError.code = 'REQUEST_TIMEOUT';
-      timeoutError.originalError = errorText;
-      throw timeoutError;
-    }
-    if ((err && err.name === 'AbortError') || /fetch is aborted|aborterror|the operation was aborted|request was aborted/i.test(errorText)) {
-      var abortError = new Error('Fetch is aborted：请求被中止，远端是否已处理本次请求无法确认。');
-      abortError.code = 'REQUEST_ABORTED';
-      abortError.originalError = errorText;
-      throw abortError;
-    }
-    throw err;
-  } finally {
     clearTimeout(timer);
-  }
+    if (!resp.ok) { var t = await resp.text(); throw new Error('HTTP ' + resp.status + ': ' + t.slice(0, 150)); }
+    return await resp.json();
+  } catch (err) { clearTimeout(timer); throw err; }
 }
 
-async function callAPI(msgs, c, requestTimeout) {
+async function callAPI(msgs, c) {
   var key = cleanKey(c.apiKey);
   var payload = { model: c.model, messages: msgs, temperature: c.temperature, max_tokens: c.maxTokens };
   var targets = buildTargets(c.baseUrl, '/chat/completions', c.proxyMode);
-  var callTimeout = Number(requestTimeout) > 0 ? Number(requestTimeout) : 45000;
-  var attemptErrors = [];
-  function routeLabel(target) {
-    if (target.indexOf('corsproxy.io') >= 0) return '代理1';
-    if (target.indexOf('allorigins.win') >= 0) return '代理2';
-    if (target.indexOf('codetabs.com') >= 0) return '代理3';
-    return '直连';
-  }
-  function safeToTryAnotherRoute(err) {
-    var status = Number(err && err.status || 0);
-    // Only explicit route/method/payload rejection responses are eligible for route fallback.
-    // Network errors, timeouts, aborts, malformed bodies and 5xx responses are ambiguous and must not resend a billable POST.
-    if ([404, 405, 407, 413].indexOf(status) >= 0) return true;
-    var message = String(err && err.message || err || '');
-    var match = message.match(/^HTTP\s+(404|405|407|413)\b/i);
-    return !!match;
-  }
-  function isAmbiguousFailure(err) {
-    var code = String(err && err.code || '');
-    var message = String(err && err.message || err || '');
-    return /REQUEST_TIMEOUT|REQUEST_ABORTED|REQUEST_RESULT_UNKNOWN/.test(code) ||
-      /load failed|failed to fetch|networkerror|network error|fetch failed|fetch is aborted|aborterror|aborted|timed out|timeout|connection was lost|not valid json|不是有效 json/i.test(message);
-  }
+  var lastErr = null;
   for (var i = 0; i < targets.length; i++) {
     try {
-      // The main story action/opening passes 180000 ms explicitly; utility calls retain the original 45000 ms default.
-      // The API output cap and selected max_tokens are unchanged.
-      var data = await unifiedRequest(targets[i], key, payload, callTimeout);
-      if (!data.choices || !data.choices[0] || !data.choices[0].message) {
-        var shapeError = new Error('返回结构异常：响应中没有 choices[0].message');
-        shapeError.code = 'INVALID_API_RESPONSE';
-        throw shapeError;
-      }
+      var data = await unifiedRequest(targets[i], key, payload, 45000);
+      if (!data.choices || !data.choices[0] || !data.choices[0].message) throw new Error('返回结构异常');
       return data.choices[0].message.content;
-    } catch (e) {
-      var detail = String(e && e.message || e || '未知错误').replace(/[\r\n]+/g, ' ').slice(0, 180);
-      attemptErrors.push(routeLabel(targets[i]) + '：' + detail);
-      if (!safeToTryAnotherRoute(e)) {
-        var safeError;
-        if (isAmbiguousFailure(e)) {
-          safeError = new Error('本轮请求没有完整返回，结果可能未知；为避免重复计费，已停止自动重发。连接方式：' + routeLabel(targets[i]) + '。错误：' + detail + '。请先查看用量记录；确认后再手动切换连接方式重试。');
-          safeError.code = 'REQUEST_RESULT_UNKNOWN';
-          safeError.originalError = detail;
-        } else {
-          safeError = new Error('请求失败，已停止自动重发。连接方式：' + routeLabel(targets[i]) + '。错误：' + detail + '。如果需要，可在设置中手动切换连接方式后再试。');
-          safeError.code = 'REQUEST_FAILED_NO_RETRY';
-          safeError.originalError = detail;
-        }
-        throw safeError;
-      }
-      // Continue only after an explicit HTTP response that rejects the route/method/body.
-    }
+    } catch (e) { lastErr = e; }
   }
-  throw new Error('请求被连接端明确拒绝，已尝试可安全切换的连接方式：' + attemptErrors.join('；').slice(0, 500));
+  throw new Error((lastErr ? lastErr.message : '连接被拦截'));
 }
 
 async function fetchModels(uId, kId, pId, listId) {
@@ -1958,8 +1881,8 @@ function showSetting(t, el) {
 /* ============================================================
    第十四部分 · 存盘系统（三层分离）
    ============================================================ */
-var SK = 'guimi_saves_v14_ultimate__requesttest';
-var DB_NAME = 'GuimiSaveDB_v2_RequestStabilityTest';
+var SK = 'guimi_saves_v14_ultimate';
+var DB_NAME = 'GuimiSaveDB_v2';
 var DB_STORE_STATE = 'state';
 var DB_STORE_MEM = 'memory';
 var DB_STORE_LOG = 'log';
@@ -2400,9 +2323,7 @@ async function execute() {
   $('log').scrollTop = $('log').scrollHeight;
 
   running = true; $('execBtn').disabled = true;
-  var executionStage = '准备请求';
-  var raw = null;
-  try {
+
   var recentLog = state.log.slice(-4).map(function(e) { return '[' + e.tag + '] ' + e.content.replace(/<[^>]+>/g, ''); }).join('\n');
   var recalledMem = recallMemories(action);
   var npcCtx = Object.keys(state.relations).filter(function(n) { return state.relations[n].status === '在场'; }).map(function(n) {
@@ -2422,9 +2343,8 @@ async function execute() {
     '【玩家此轮行动】' + action + '\n' +
     '严格依据世界书推演，全面更新 stateChanges、npcUpdates 与 memoryEntry，严格返回纯 JSON。';
 
-    executionStage = '等待 AI 返回';
-    raw = await callAPI([{ role: 'system', content: GM_SYSTEM }, { role: 'user', content: userPrompt }], cfg, 180000);
-    executionStage = '解析并应用 AI 结果';
+  try {
+    var raw = await callAPI([{ role: 'system', content: GM_SYSTEM }, { role: 'user', content: userPrompt }], cfg);
     var le = $('loadingEntry'); if (le) le.remove();
     var r = tryParseJSON(raw);
     if (r.ok) {
@@ -2441,8 +2361,7 @@ async function execute() {
     setSaves(as);
   } catch (e) {
     var le2 = $('loadingEntry'); if (le2) le2.remove();
-    var actionErrorMessage = String(e && e.message || e || '未知错误');
-    addEntry('因果动荡', 'system', '本轮未完成（阶段：' + executionStage + '）：' + actionErrorMessage + '<br><small>如果提示“结果可能未知”，请先检查服务商用量记录再决定是否重新生成；也可以点击【回退一步】。</small>');
+    addEntry('因果动荡', 'system', '灵界连接发生异常：' + e.message + '<br><small>可点击下方【重新生成】或【回退一步】按钮。</small>');
   } finally {
     running = false; $('execBtn').disabled = false;
   }
@@ -2492,7 +2411,7 @@ async function genInit() {
     '6. 严格返回纯 JSON。';
 
   try {
-    var raw = await callAPI([{ role: 'system', content: prompt }, { role: 'user', content: '世界生成，命运帷幕开启。' }], cfg, 180000);
+    var raw = await callAPI([{ role: 'system', content: prompt }, { role: 'user', content: '世界生成，命运帷幕开启。' }], cfg);
     var le = $('loadingEntry'); if (le) le.remove();
     var r = tryParseJSON(raw);
     if (r.ok) { applyAI(r.data, '降临廷根市'); toast('初临世界构筑完成'); }
@@ -16925,10 +16844,14 @@ console.log(
   }
 
   function isLoadFailure(err){
-    var s = String(err && err.message || err || '');
-    var code = String(err && err.code || '');
-    return /REQUEST_TIMEOUT|REQUEST_ABORTED|REQUEST_RESULT_UNKNOWN/.test(code) ||
-      /load failed|failed to fetch|networkerror|network error|the network connection was lost|fetch failed|fetch is aborted|aborterror|aborted|timed out|timeout/i.test(s);
+
+    var s = String(
+      err && err.message ||
+      err ||
+      ''
+    );
+
+    return /load failed|failed to fetch|networkerror|network error|the network connection was lost|fetch failed/i.test(s);
   }
 
   /*
@@ -16992,14 +16915,53 @@ console.log(
           );
 
         }catch(e1){
-          // Do not resend an ambiguous POST with a more-compressed body: the first request may already be billable.
-          if(isLoadFailure(e1)){
-            var v614OriginalMessage = String(e1 && e1.message || e1 || '网络请求失败');
-            var v614SafeError = new Error('V61.4 已停止失败后的自动压缩重发，以避免同一轮重复生成/计费。原始错误：' + v614OriginalMessage);
-            v614SafeError.code = 'REQUEST_RESULT_UNKNOWN';
-            v614SafeError.originalError = v614OriginalMessage;
-            throw v614SafeError;
+
+          /*
+           * 只有真正的网络 Load failed
+           * 才触发第二次更强压缩。
+           */
+          if(!isLoadFailure(e1)){
+            throw e1;
           }
+
+          try{
+
+            if(
+              body &&
+              Array.isArray(body.messages)
+            ){
+
+              var currentSize =
+                totalBodyText(safeBody);
+
+              if(
+                size > SOFT_LIMIT ||
+                currentSize > SOFT_LIMIT
+              ){
+
+                var hardBody =
+                  compactMessages(
+                    body,
+                    true
+                  );
+
+                return await oldUnifiedV614.call(
+                  this,
+                  url,
+                  key,
+                  hardBody,
+                  timeout
+                );
+              }
+
+            }
+
+          }catch(e2){
+
+            throw e2;
+
+          }
+
           throw e1;
         }
 
@@ -17270,14 +17232,19 @@ console.log(
   }
 
   function isLoadFailure(err){
+
     var s = '';
-    var code = '';
-    try {
-      s = String(err && err.message || err || '');
-      code = String(err && err.code || '');
-    } catch(e) {}
-    return /REQUEST_TIMEOUT|REQUEST_ABORTED|REQUEST_RESULT_UNKNOWN/.test(code) ||
-      /load failed|failed to fetch|networkerror|network error|fetch failed|connection was lost|fetch is aborted|aborterror|aborted|timed out|timeout/i.test(s);
+
+    try{
+      s = String(
+        err &&
+        err.message ||
+        err ||
+        ''
+      );
+    }catch(e){}
+
+    return /load failed|failed to fetch|networkerror|network error|fetch failed|connection was lost/i.test(s);
   }
 
   if(
@@ -17333,14 +17300,52 @@ console.log(
           );
 
         }catch(e1){
-          // Do not repeat an ambiguous POST after a network/abort failure.
-          if(isLoadFailure(e1)){
-            var v615OriginalMessage = String(e1 && e1.message || e1 || '网络请求失败');
-            var v615SafeError = new Error('V61.5 已停止失败后的自动深度压缩重发，以避免同一轮重复生成/计费。原始错误：' + v615OriginalMessage);
-            v615SafeError.code = 'REQUEST_RESULT_UNKNOWN';
-            v615SafeError.originalError = v615OriginalMessage;
-            throw v615SafeError;
+
+          /*
+           * 只对真正的 Load failed 类错误
+           * 再做一次强制缩减。
+           */
+          if(!isLoadFailure(e1)){
+            throw e1;
           }
+
+          try{
+
+            if(
+              original &&
+              Array.isArray(original.messages)
+            ){
+
+              var hardBody =
+                compactMessages(
+                  original,
+                  true
+                );
+
+              var hardSize =
+                bodyChars(hardBody);
+
+              console.warn(
+                '[V61.5] Load failed，执行深度请求压缩：',
+                size,
+                '→',
+                hardSize,
+                'chars'
+              );
+
+              return await oldUnifiedV615.call(
+                this,
+                url,
+                key,
+                hardBody,
+                timeout
+              );
+            }
+
+          }catch(e2){
+            throw e2;
+          }
+
           throw e1;
         }
       };
@@ -22178,11 +22183,11 @@ console.log(
   if(window.__V67_SAFE_FINAL__) return;
   window.__V67_SAFE_FINAL__ = true;
 
-  var FACT_KEY = '_v67SafeFacts__requesttest';
-  var BRANCH_KEY = '_v67SafeBranches__requesttest';
-  var MEMORY_KEY = '_v67SafeMemory__requesttest';
-  var TAROT_KEY = '_v67SafeTarot__requesttest';
-  var LAST_DATE_KEY = '_v67SafeLastDate__requesttest';
+  var FACT_KEY = '_v67SafeFacts';
+  var BRANCH_KEY = '_v67SafeBranches';
+  var MEMORY_KEY = '_v67SafeMemory';
+  var TAROT_KEY = '_v67SafeTarot';
+  var LAST_DATE_KEY = '_v67SafeLastDate';
   var MARK = '[V67_SAFE_CONTEXT]';
 
   function clone(v){
@@ -24293,13 +24298,13 @@ console.log(
   window.__V68_SAFE_FINAL__ = true;
 
   var S = function(){ return window.state || null; };
-  var LEGACY_KEY = '_v68LegacySave__requesttest';
-  var FORMAT_KEY = '_v68Format__requesttest';
-  var TAROT_PENDING_KEY = '_v68RetroTarotPending__requesttest';
-  var TAROT_INTRO_KEY = '_v68RetroTarotIntroduced__requesttest';
-  var HOUSE_AUDIT_KEY = '_v68HouseAuditPending__requesttest';
-  var HOUSE_AUDIT_DONE_KEY = '_v68HouseAuditDone__requesttest';
-  var HOME_INTENT_KEY = '_v68HomeIntent__requesttest';
+  var LEGACY_KEY = '_v68LegacySave';
+  var FORMAT_KEY = '_v68Format';
+  var TAROT_PENDING_KEY = '_v68RetroTarotPending';
+  var TAROT_INTRO_KEY = '_v68RetroTarotIntroduced';
+  var HOUSE_AUDIT_KEY = '_v68HouseAuditPending';
+  var HOUSE_AUDIT_DONE_KEY = '_v68HouseAuditDone';
+  var HOME_INTENT_KEY = '_v68HomeIntent';
 
   var TAROT_CANON = [
     {date:[1349,6,28], name:'克莱恩·莫雷蒂', card:'愚者'},
@@ -26999,7 +27004,7 @@ console.log(
     if (!Object.keys(source).length) return Promise.resolve(false);
     var preserved = cloneSaveMap(source);
     backupPromise = Promise.resolve().then(function(){
-      try { localStorage.setItem('guimi_v70_pre_repair_backup__requesttest', JSON.stringify(preserved)); } catch(e) {}
+      try { localStorage.setItem('guimi_v70_pre_repair_backup', JSON.stringify(preserved)); } catch(e) {}
       if (typeof initDB !== 'function') return false;
       return initDB().then(function(db){
         return new Promise(function(resolve){
@@ -27281,7 +27286,7 @@ console.log(
     console.log('[V70 检查]',out); return out;
   };
   async function readPreRepairBackup(){
-    try { var text=localStorage.getItem('guimi_v70_pre_repair_backup__requesttest'); if(text){ var parsed=JSON.parse(text); if(parsed&&typeof parsed==='object') return parsed; } } catch(e){}
+    try { var text=localStorage.getItem('guimi_v70_pre_repair_backup'); if(text){ var parsed=JSON.parse(text); if(parsed&&typeof parsed==='object') return parsed; } } catch(e){}
     try {
       if(typeof initDB!=='function') return null;
       var db=await initDB();
@@ -27317,7 +27322,7 @@ console.log(
   'use strict';
   if (window.__V78_CHAT_AGE_CORRECTION__) return;
 
-  var LOCK_KEY = '_v78ChatAgeLock__requesttest';
+  var LOCK_KEY = '_v78ChatAgeLock';
   var REGISTRY = window.__V78_CHAT_AGE_LOCKS__ ||
     (window.__V78_CHAT_AGE_LOCKS__ = {});
 
@@ -27954,8 +27959,8 @@ console.log(
   if (window.__V79_AI_LEDGER_PATCH__) return;
   window.__V79_AI_LEDGER_PATCH__ = true;
 
-  var QUEUE_KEY = '_v79LedgerQueue__requesttest';
-  var COUNTER_KEY = '_v79LedgerCounter__requesttest';
+  var QUEUE_KEY = '_v79LedgerQueue';
+  var COUNTER_KEY = '_v79LedgerCounter';
   var RULE_MARK = '【V79·下一轮AI账本复核】';
 
   function S(){
