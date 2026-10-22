@@ -29017,15 +29017,14 @@ console.log(
   );
 })();
 /* ▲▲▲ V81/V82 修订版结束 ▲▲▲ */
-
-/* ▼▼▼ V84 · 传输层止血：停用失效公共代理 / 单次请求 / 精确报错 / 连接自检 ▼▼▼ */
+/* ▼▼▼ V84 · 传输层修复：只发一次、不自动切代理、失败原因说人话 ▼▼▼ */
 (function () {
   'use strict';
   try {
     if (window.__V84_TRANSPORT__) { console.log('[V84] 已安装，跳过重复挂载'); return; }
 
     var V = window.__V84_TRANSPORT__ = {
-      version: 1,
+      version: 2,
       installedAt: new Date().toISOString(),
       inner: null,
       last: null,
@@ -29044,9 +29043,7 @@ console.log(
     function payloadChars(msgs) {
       try {
         var n = 0;
-        for (var i = 0; i < msgs.length; i++) {
-          n += str(msgs[i] && msgs[i].content).length;
-        }
+        for (var i = 0; i < msgs.length; i++) n += str(msgs[i] && msgs[i].content).length;
         return n;
       } catch (e) { return -1; }
     }
@@ -29063,32 +29060,29 @@ console.log(
     }
 
     /*
-     * 只改“发到哪”，不改提示词、不改 state、不碰存档。
+     * 只改「发到哪」，不改提示词、不改 state、不碰存档。
      * 旧逻辑在 auto 模式下直连失败会自动改发 corsproxy.io，
-     * 而这三个公共代理在 2026 年已经全部失效（403 / 超时），
-     * 于是每次行动都会白等一轮、还可能被重复计费。
+     * 而三个公共代理在 2026 年已经全部失效（403 / 超时）。
      */
     function forcedMode(conf) {
       if (window.__V84_FORCE_MODE__ === 'auto') return null;
       if (window.__V84_FORCE_MODE__ === 'direct') return 'direct';
       var m = str(conf.proxyMode || 'auto');
-      if (m === 'auto' || m === 'proxy1' || m === 'proxy2' || m === 'proxy3') {
-        return 'direct';
-      }
+      if (m === 'auto' || m === 'proxy1' || m === 'proxy2' || m === 'proxy3') return 'direct';
       return null;
     }
 
     function explain(info) {
       var d = info.failure || {};
       var sec = Math.max(1, Math.round(info.ms / 1000));
-      var sizeNote = info.chars > 0 ? ('本轮请求正文约 ' + info.chars + ' 字。') : '';
       var host = '';
       try { host = new URL(d.url || info.baseUrl || '').host; } catch (e) {}
       var tail = host ? ('（地址：' + host + '）') : '';
+      var sizeNote = info.chars > 0 ? ('本轮请求正文约 ' + info.chars + ' 字。') : '';
 
       if (d.kind === 'timeout') {
         return '等了 ' + sec + ' 秒仍没有完整回应，本地已中止。' + sizeNote + tail +
-          ' 多半是接口太慢或连接被挂住；点底部工具栏的【连接自检】可以确认。';
+          ' 多半是接口太慢或连接被挂住。';
       }
       if (d.kind === 'http') {
         return '接口返回错误状态：' + str(d.message).slice(0, 160) + tail;
@@ -29098,8 +29092,7 @@ console.log(
       }
       if (d.kind === 'network') {
         return '浏览器没拿到任何响应（' + str(d.message || info.raw) + '）。' + sizeNote + tail +
-          ' 常见原因：①这个接口地址不支持浏览器跨域；②页面是用本地文件打开的；③网络/代理中断。' +
-          ' 已停用会自动切到失效公共代理的旧逻辑；点底部工具栏的【连接自检】可以测出是哪一种。';
+          ' 常见原因：①这个接口地址不支持浏览器跨域；②页面是用本地文件打开的；③网络/代理中断。';
       }
       return str(info.raw) || '未知错误';
     }
@@ -29118,12 +29111,7 @@ console.log(
       if (forced) conf.proxyMode = forced;
 
       var chars = payloadChars(msgs || []);
-      V.pending = {
-        at: new Date().toISOString(),
-        chars: chars,
-        mode: conf.proxyMode,
-        baseUrl: conf.baseUrl
-      };
+      V.pending = { at: new Date().toISOString(), chars: chars, mode: conf.proxyMode, baseUrl: conf.baseUrl };
 
       var p;
       try {
@@ -29133,13 +29121,7 @@ console.log(
       }
 
       return Promise.resolve(p).then(function (v) {
-        V.last = {
-          ok: true,
-          ms: Date.now() - started,
-          chars: chars,
-          mode: conf.proxyMode,
-          at: new Date().toISOString()
-        };
+        V.last = { ok: true, ms: Date.now() - started, chars: chars, mode: conf.proxyMode, at: new Date().toISOString() };
         return v;
       }, function (err) {
         var d = window.__V8182_LAST_REQUEST_FAILURE__ || null;
@@ -29160,14 +29142,11 @@ console.log(
       });
     };
 
-    /* ---------------- 连接自检 ---------------- */
-
+    /* 控制台诊断：界面上不出现，只有手动调用才跑 */
     function probeOne(url, conf, timeoutMs) {
       return new Promise(function (resolve) {
         var t0 = Date.now();
-        var ctrl = null;
-        var tm = null;
-        var done = false;
+        var ctrl = null, tm = null, done = false;
 
         function finish(r) {
           if (done) return;
@@ -29186,24 +29165,15 @@ console.log(
 
         try {
           ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
-          if (ctrl) {
-            tm = setTimeout(function () {
-              try { ctrl.abort(); } catch (e) {}
-            }, timeoutMs);
-          }
+          if (ctrl) tm = setTimeout(function () { try { ctrl.abort(); } catch (e) {} }, timeoutMs);
 
           fetch(url, {
             method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': 'Bearer ' + str(conf.apiKey)
-            },
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + str(conf.apiKey) },
             body: JSON.stringify(payload),
             signal: ctrl ? ctrl.signal : undefined
           }).then(function (res) {
-            return res.text().then(function (txt) {
-              return { res: res, txt: txt };
-            });
+            return res.text().then(function (txt) { return { res: res, txt: txt }; });
           }).then(function (o) {
             var st = o.res.status;
             var note;
@@ -29211,96 +29181,31 @@ console.log(
             else if (st === 401 || st === 403) note = '通道是通的，但密钥/权限被拒（HTTP ' + st + '）';
             else if (st === 429) note = '通道是通的，但被限流（HTTP 429）';
             else note = 'HTTP ' + st + '：' + str(o.txt).slice(0, 90);
-            finish({
-              reachable: o.res.ok || st === 401 || st === 403 || st === 429,
-              ok: o.res.ok,
-              status: st,
-              ms: Date.now() - t0,
-              note: note
-            });
+            finish({ reachable: o.res.ok || st === 401 || st === 403 || st === 429, ms: Date.now() - t0, note: note });
           }).catch(function (e) {
-            finish({
-              reachable: false,
-              ok: false,
-              status: 0,
-              ms: Date.now() - t0,
-              note: (e && e.name || 'Error') + '：' + str(e && e.message)
-            });
+            finish({ reachable: false, ms: Date.now() - t0, note: (e && e.name || 'Error') + '：' + str(e && e.message) });
           });
         } catch (e) {
-          finish({ reachable: false, ok: false, status: 0, ms: Date.now() - t0, note: '发起失败：' + str(e && e.message) });
+          finish({ reachable: false, ms: Date.now() - t0, note: '发起失败：' + str(e && e.message) });
         }
       });
     }
 
-    function pageOrigin() {
-      try {
-        return String((window.location && window.location.origin) || '') || '(未知)';
-      } catch (e) { return '(未知)'; }
-    }
-
-    function isFilePage() {
-      try {
-        return String((window.location && window.location.protocol) || '') === 'file:';
-      } catch (e) { return false; }
-    }
-
     window.v84Doctor = async function () {
-      var conf = copyCfg(window.cfg);
-      var lines = [];
-
       try {
-      lines.push('页面来源：' + pageOrigin() + (isFilePage() ? '（本地文件，跨域请求会被浏览器直接拦掉）' : ''));
-      lines.push('接口地址：' + str(conf.baseUrl));
-      lines.push('模型：' + str(conf.model) + '　密钥：' + maskKey(conf.apiKey));
-      lines.push('设置里的连接方式：' + str(conf.proxyMode) + '（V84 现在固定只发一次，不再自动切代理）');
-
-      var targets = [];
-      try {
-        targets = window.buildTargets(conf.baseUrl, '/chat/completions', 'auto') || [];
-      } catch (e) {
-        lines.push('构造地址失败：' + str(e && e.message));
-      }
-
-      lines.push('');
-      lines.push('—— 逐条通道测试（每条最多 1 个 token，费用可忽略）——');
-
-      var jobs = targets.map(function (u, i) {
-        return probeOne(u, conf, i === 0 ? 25000 : 12000).then(function (r) {
-          var host = '';
-          try { host = new URL(u).host; } catch (e) { host = str(u).slice(0, 40); }
-          return { idx: i, host: host, r: r };
-        });
-      });
-
-      var results = await Promise.all(jobs);
-      var directOk = false;
-      var proxyOk = false;
-
-      results.forEach(function (x) {
-        if (x.idx === 0 && x.r.reachable) directOk = true;
-        if (x.idx > 0 && x.r.reachable) proxyOk = true;
-        lines.push((x.r.reachable ? '✅ ' : '❌ ') + x.idx + '. ' + x.host + '　' + x.r.ms + 'ms　' + x.r.note);
-      });
-
-      lines.push('');
-      if (directOk) {
-        lines.push('结论：直连通道可用。若刚才仍然失败，问题不在“能不能连”，而在请求内容或等待时间，请把上一轮的报错发我。');
-      } else if (proxyOk) {
-        lines.push('结论：直连不通，只有某个代理能通。这种情况请把设置里的连接方式改成那个代理，再试一次。');
-      } else {
-        lines.push('结论：所有通道都不通。这不是游戏逻辑的问题，而是手机浏览器访问不到这个接口地址。');
-        lines.push('请确认：①接口地址能直接在手机浏览器里打开；②它允许浏览器跨域访问（官方 api.deepseek.com 是允许的）；③当前网络没有拦它。');
-      }
-
-      var text = lines.join('\n');
-      try { console.log('[V84 连接自检]\n' + text); } catch (e) {}
-      return text;
-      } catch (e) {
-        var bad = '自检失败：' + str(e && e.message);
-        try { console.log('[V84 连接自检] ' + bad); } catch (e2) {}
-        return bad;
-      }
+        var conf = copyCfg(window.cfg);
+        var targets = [];
+        try { targets = window.buildTargets(conf.baseUrl, '/chat/completions', 'auto') || []; } catch (e) {}
+        var rows = await Promise.all(targets.map(function (u, i) {
+          return probeOne(u, conf, i === 0 ? 25000 : 12000).then(function (r) {
+            var host = '';
+            try { host = new URL(u).host; } catch (e) { host = str(u).slice(0, 40); }
+            return (r.reachable ? '✅ ' : '❌ ') + host + ' ' + r.ms + 'ms ' + r.note;
+          });
+        }));
+        console.log('[V84 连接诊断]\n' + rows.join('\n'));
+        return rows;
+      } catch (e) { console.warn('[V84] 诊断失败', e); return []; }
     };
 
     window.v84Last = function () {
@@ -29315,341 +29220,14 @@ console.log(
       } catch (e) {}
     };
 
-    /* ---------------- 一个小按钮，手机上也能自检 ---------------- */
-
-    function ensurePanel(text) {
-      var p = document.getElementById('v84_diag_panel');
-      if (!p) {
-        p = document.createElement('div');
-        p.id = 'v84_diag_panel';
-        p.style.cssText = 'position:fixed;left:4%;right:4%;top:8%;z-index:2147482001;max-height:74%;overflow:auto;' +
-          'background:rgba(10,12,16,.96);color:#e6eefc;font:11px/1.6 ui-monospace,Menlo,Consolas,monospace;' +
-          'padding:12px;border-radius:12px;border:1px solid rgba(120,170,255,.3);white-space:pre-wrap;' +
-          '-webkit-user-select:text;user-select:text;box-shadow:0 10px 40px rgba(0,0,0,.6);';
-        p.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">' +
-          '<b style="color:#9fd0ff;font-size:12px;">连接自检</b>' +
-          '<span data-close style="color:#ffb4b4;padding:2px 8px;cursor:pointer;">关闭</span></div>' +
-          '<div data-body></div>';
-        p.addEventListener('click', function (ev) {
-          if (ev.target && ev.target.hasAttribute && ev.target.hasAttribute('data-close')) {
-            p.remove();
-          }
-        });
-        document.body.appendChild(p);
-      }
-      var body = p.querySelector('[data-body]');
-      if (body && text != null) body.textContent = text;
-      return p;
-    }
-
-    function ensureButton() {
-      try {
-        if (window.__V84_SHOW_BTN__ === false) return;
-        if (document.getElementById('v84_diag_btn')) return;
-
-        var btn = document.createElement('button');
-        btn.id = 'v84_diag_btn';
-        btn.type = 'button';
-        btn.className = 'btn small';
-        btn.textContent = '🔌 连接自检';
-        btn.style.cssText = 'opacity:.85;';
-
-        btn.addEventListener('click', function () {
-          ensurePanel('检测中，最长约 25 秒……');
-          Promise.resolve().then(function () {
-            return window.v84Doctor();
-          }).then(function (t) {
-            ensurePanel(t);
-          }).catch(function (e) {
-            ensurePanel('自检本身出错了：' + str(e && e.message));
-          });
-        });
-
-        var bar = null;
-        try { bar = document.querySelector('.toolbar'); } catch (e) {}
-
-        if (bar && bar.appendChild) {
-          bar.appendChild(btn);
-        } else {
-          btn.style.cssText = 'position:fixed;right:8px;bottom:8px;z-index:2147482000;' +
-            'background:rgba(20,24,32,.85);color:#cfe3ff;border:1px solid rgba(120,170,255,.35);' +
-            'border-radius:999px;padding:6px 10px;font-size:11px;';
-          document.body.appendChild(btn);
-        }
-      } catch (e) {}
-    }
-
-    try {
-      if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', ensureButton);
-      } else {
-        ensureButton();
-      }
-    } catch (e) {}
-
-    console.log('%c[V84] 传输层止血已挂载：固定单次请求、停用失效公共代理、失败原因中文化；底部工具栏可「连接自检」。',
+    console.log('%c[V84] 传输层已修复：固定单次请求，不再自动切换失效公共代理。',
       'color:#0f766e;font-weight:700');
   } catch (e) {
     console.warn('[V84] 安装失败（不影响原游戏）', e);
   }
 })();
 /* ▲▲▲ V84 完 ▲▲▲ */
-/* ▼▼▼ V85 · 存档只读体检（只读，不写、不迁移、不修复、不改任何 key） ▼▼▼ */
-(function () {
-  'use strict';
-  try {
-    if (window.__V85_SAVE_INSPECT__) { console.log('[V85] 已安装'); return; }
-    window.__V85_SAVE_INSPECT__ = true;
 
-    function str(v) { return v == null ? '' : String(v); }
-
-    function openDB(name) {
-      return new Promise(function (resolve) {
-        var done = false;
-        var t = setTimeout(function () {
-          if (!done) { done = true; resolve(null); }
-        }, 4000);
-        try {
-          var req = indexedDB.open(name);
-          req.onsuccess = function (e) {
-            if (done) { try { e.target.result.close(); } catch (x) {} return; }
-            done = true;
-            clearTimeout(t);
-            resolve(e.target.result);
-          };
-          req.onerror = function () {
-            if (!done) { done = true; clearTimeout(t); resolve(null); }
-          };
-          req.onblocked = function () {
-            if (!done) { done = true; clearTimeout(t); resolve(null); }
-          };
-        } catch (e) {
-          if (!done) { done = true; clearTimeout(t); resolve(null); }
-        }
-      });
-    }
-
-    function getAllKeys(db, store) {
-      return new Promise(function (resolve) {
-        try {
-          var tx = db.transaction(store, 'readonly');
-          var rq = tx.objectStore(store).getAllKeys();
-          rq.onsuccess = function () { resolve(rq.result || []); };
-          rq.onerror = function () { resolve([]); };
-        } catch (e) { resolve([]); }
-      });
-    }
-
-    function getVal(db, store, key) {
-      return new Promise(function (resolve) {
-        try {
-          var tx = db.transaction(store, 'readonly');
-          var rq = tx.objectStore(store).get(key);
-          rq.onsuccess = function () { resolve(rq.result); };
-          rq.onerror = function () { resolve(undefined); };
-        } catch (e) { resolve(undefined); }
-      });
-    }
-
-    function slotLines(map) {
-      var out = [];
-      var count = 0;
-      try {
-        if (!map || typeof map !== 'object') return { count: 0, lines: [] };
-        var ks = Object.keys(map);
-        count = ks.length;
-        for (var i = 0; i < ks.length; i++) {
-          var s = map[ks[i]] || {};
-          var m = s.meta || {};
-          var who = m.name || '?';
-          var when = m.time || '?';
-          var savedAt = m.savedAt || '';
-          out.push('        - 「' + ks[i] + '」 ' + who + ' · ' + when + (savedAt ? ' · 存于 ' + savedAt : ''));
-        }
-      } catch (e) {}
-      return { count: count, lines: out };
-    }
-
-    window.v85SaveCheck = async function () {
-      var lines = [];
-      try {
-        var origin = '';
-        try { origin = str(location.origin); } catch (e) {}
-        lines.push('页面来源：' + origin);
-        lines.push('（同一个域名下换文件不会动存档；换域名 / 换端口 / http↔https 才是另一块存储）');
-        lines.push('');
-
-        var ls = [];
-        try {
-          for (var i = 0; i < localStorage.length; i++) {
-            var k = localStorage.key(i);
-            if (str(k).indexOf('guimi') !== 0) continue;
-            var v = localStorage.getItem(k) || '';
-            ls.push('  · ' + k + '　' + v.length + 'B');
-          }
-        } catch (e) {}
-
-        lines.push('localStorage：');
-        lines.push(ls.length ? ls.join('\n') : '  （没有 guimi_ 开头的键）');
-        lines.push('');
-
-        if (!indexedDB.databases) {
-          lines.push('这个浏览器不支持枚举数据库，无法检查存档库（只读模式，不会去创建）。');
-          return lines.join('\n');
-        }
-
-        var dbs = [];
-        try { dbs = await indexedDB.databases(); } catch (e) {}
-
-        lines.push('IndexedDB：');
-
-        var normal = 0;
-        var test = 0;
-        var other = 0;
-        var any = false;
-
-        for (var j = 0; j < dbs.length; j++) {
-          var name = (dbs[j] && dbs[j].name) || '';
-          if (!/Guimi|WB_DB|Save/i.test(name)) continue;
-
-          any = true;
-          var db = await openDB(name);
-          if (!db) { lines.push('  ' + name + '：打不开（可能被别的标签页占用）'); continue; }
-
-          var stores = [];
-          try { stores = Array.prototype.slice.call(db.objectStoreNames); } catch (e) {}
-          lines.push('  ' + name + '（v' + db.version + '，表：' + (stores.join(',') || '无') + '）');
-
-          for (var s = 0; s < stores.length; s++) {
-            var store = stores[s];
-            var keys = await getAllKeys(db, store);
-            lines.push('    · ' + store + '：' + keys.length + ' 个键');
-
-            if (store === 'state') {
-              if (keys.indexOf('all_saves') >= 0) {
-                var saves = await getVal(db, store, 'all_saves');
-                var detail = slotLines(saves);
-                lines.push('      all_saves：' + detail.count + ' 个存档槽');
-                if (detail.lines.length) lines.push(detail.lines.join('\n'));
-                if (name.indexOf('RequestStabilityTest') >= 0) test += detail.count;
-                else if (name === 'GuimiSaveDB_v2') normal += detail.count;
-                else other += detail.count;
-              }
-              if (keys.indexOf('all_saves_v70_pre_repair_backup') >= 0) {
-                var bk = await getVal(db, store, 'all_saves_v70_pre_repair_backup');
-                var bd = slotLines(bk);
-                lines.push('      V70 备份：' + bd.count + ' 个槽');
-              }
-            }
-          }
-          try { db.close(); } catch (e) {}
-        }
-
-        if (!any) lines.push('  （没找到 Guimi / Save 相关的数据库）');
-
-        lines.push('');
-        if (normal > 0) {
-          lines.push('结论：当前这版能读到 ' + normal + ' 个存档槽 —— 存档在，没丢。');
-        } else if (test > 0) {
-          lines.push('结论：当前这版自己的库里是空的；但 GPT 那版的测试库里还有 ' + test + ' 个存档。');
-          lines.push('数据没被删，只是换了个库名，当前这版看不见。需要的话可以只读地把它们搬回来。');
-        } else if (other > 0) {
-          lines.push('结论：存档在别的库里（' + other + ' 个槽），当前这版读的不是那个库。');
-        } else {
-          lines.push('结论：这几个库里都没有找到存档。');
-        }
-
-        if (ls.some(function (x) { return x.indexOf('guimi_v70_pre_repair_backup') >= 0; })) {
-          lines.push('补充：localStorage 里有 V70 的「修复前备份」，可以作为最后的兜底。');
-        }
-        if (ls.some(function (x) { return x.indexOf('__requesttest') >= 0; })) {
-          lines.push('补充：localStorage 里还有 __requesttest 的键，说明 GPT 测试版确实在这台手机上跑过。');
-        }
-
-        var text = lines.join('\n');
-        try { console.log('[V85 存档体检]\n' + text); } catch (e) {}
-        return text;
-      } catch (e) {
-        var bad = '存档体检失败：' + str(e && e.message);
-        try { console.log('[V85] ' + bad); } catch (e2) {}
-        return bad;
-      }
-    };
-
-    function panel(text) {
-      var p = document.getElementById('v85_panel');
-      if (!p) {
-        p = document.createElement('div');
-        p.id = 'v85_panel';
-        p.style.cssText = 'position:fixed;left:4%;right:4%;top:8%;z-index:2147482002;max-height:74%;overflow:auto;' +
-          'background:rgba(10,12,16,.96);color:#e6eefc;font:11px/1.6 ui-monospace,Menlo,Consolas,monospace;' +
-          'padding:12px;border-radius:12px;border:1px solid rgba(120,200,160,.3);white-space:pre-wrap;' +
-          '-webkit-user-select:text;user-select:text;box-shadow:0 10px 40px rgba(0,0,0,.6);';
-        p.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">' +
-          '<b style="color:#9fe3bf;font-size:12px;">存档体检（只读）</b>' +
-          '<span data-close style="color:#ffb4b4;padding:2px 8px;cursor:pointer;">关闭</span></div>' +
-          '<div data-body></div>';
-        p.addEventListener('click', function (ev) {
-          if (ev.target && ev.target.hasAttribute && ev.target.hasAttribute('data-close')) p.remove();
-        });
-        document.body.appendChild(p);
-      }
-      var body = p.querySelector('[data-body]');
-      if (body && text != null) body.textContent = text;
-      return p;
-    }
-
-    function ensureButton() {
-      try {
-        if (window.__V85_SHOW_BTN__ === false) return;
-        if (document.getElementById('v85_diag_btn')) return;
-
-        var btn = document.createElement('button');
-        btn.id = 'v85_diag_btn';
-        btn.type = 'button';
-        btn.className = 'btn small';
-        btn.textContent = '🗂 存档体检';
-        btn.style.cssText = 'opacity:.85;';
-
-        btn.addEventListener('click', function () {
-          panel('正在只读扫描，不会写入任何数据……');
-          Promise.resolve().then(function () {
-            return window.v85SaveCheck();
-          }).then(function (t) {
-            panel(t);
-          }).catch(function (e) {
-            panel('体检本身出错了：' + str(e && e.message));
-          });
-        });
-
-        var bar = null;
-        try { bar = document.querySelector('.toolbar'); } catch (e) {}
-        if (bar && bar.appendChild) {
-          bar.appendChild(btn);
-        } else {
-          btn.style.cssText = 'position:fixed;left:8px;bottom:8px;z-index:2147482000;' +
-            'background:rgba(20,30,26,.9);color:#bfe9d4;border:1px solid rgba(120,200,160,.35);' +
-            'border-radius:999px;padding:6px 10px;font-size:11px;';
-          document.body.appendChild(btn);
-        }
-      } catch (e) {}
-    }
-
-    try {
-      if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', ensureButton);
-      } else {
-        ensureButton();
-      }
-    } catch (e) {}
-
-    console.log('%c[V85] 存档只读体检已挂载：底部工具栏「🗂 存档体检」；只读，不写任何数据。',
-      'color:#0f766e;font-weight:700');
-  } catch (e) {
-    console.warn('[V85] 安装失败（不影响原游戏）', e);
-  }
-})();
-/* ▲▲▲ V85 完 ▲▲▲ */
 /* ▼▼▼ V86 · NPC 序列：AI 说了算 + 只升不降（只加不改，不动存档结构） ▼▼▼ */
 (function () {
   'use strict';
@@ -29667,18 +29245,28 @@ console.log(
 
     var CN = { '一': 1, '二': 2, '三': 3, '四': 4, '五': 5, '六': 6, '七': 7, '八': 8, '九': 9 };
 
+    var NPC_SEQ_RULE = [
+      '【NPC序列同步·硬性要求】',
+      '1. 本轮正文里任何角色（NPC）的序列发生了变化（晋升、完成晋升仪式、服下魔药成功），必须在 npcUpdates 数组里为该角色写出 name 与 seq。只写在正文里、不写进 npcUpdates，面板就不会更新。',
+      '2. seq 写成「序列6·无面人」或「序列6」都可以，name 必须是该角色的全名或常用名。',
+      '3. 玩家自己的晋升只写 playerUpdate，不要写进任何 NPC 的 npcUpdates。',
+      '4. 本轮没有任何角色晋升时，不要写 seq，也不要为了填字段而编造。'
+    ].join('\n');
+
     /* 序列数字：越小越强。凡人/未知 = 99 */
     function seqNum(v) {
       if (v == null) return null;
       if (typeof v === 'number') return (v >= 0 && v <= 9) ? v : null;
       var s = str(v).trim();
       if (!s) return null;
-      if (/(凡人|普通|无序列|未知|none)/i.test(s)) return 99;
+      if (/(凡人|凡俗|普通人|普通|无序列|未知|none)/i.test(s)) return 99;
       var m = s.match(/序列\s*([0-9])/);
       if (m) return parseInt(m[1], 10);
       m = s.match(/序列\s*([一二三四五六七八九])/);
       if (m) return CN[m[1]];
       m = s.match(/^\s*([0-9])\s*$/);
+      if (m) return parseInt(m[1], 10);
+      m = s.match(/^\s*([0-9])(?![0-9])/);
       if (m) return parseInt(m[1], 10);
       return null;
     }
@@ -29763,7 +29351,6 @@ console.log(
         console.warn('[V86] 拒绝把 ' + key + ' 从 ' + str(rel.seq) + ' 改成更弱的 ' + str(seqText));
         return false;
       }
-      if (want > floor) return false;
 
       rel.seq = str(seqText);
       L[key] = {
@@ -29930,23 +29517,54 @@ console.log(
               if (u && u.name && u.seq != null) snap.push({ name: str(u.name), seq: u.seq, path: u.path });
             });
           }
+          if (data && Array.isArray(data.npcProfiles)) {
+            data.npcProfiles.forEach(function (u) {
+              if (u && u.name && u.seq != null) snap.push({ name: str(u.name), seq: u.seq, path: u.path });
+            });
+          } else if (data && data.npcProfiles && typeof data.npcProfiles === 'object') {
+            Object.keys(data.npcProfiles).forEach(function (n) {
+              var u = data.npcProfiles[n];
+              if (u && u.seq != null) snap.push({ name: str(n), seq: u.seq, path: u.path });
+            });
+          }
         } catch (e) {}
 
         var after = function () {
           try {
             var text = window.__V86_STRICT__ === true ? narrativeText(data) : '';
+            var appliedCount = 0;
             snap.forEach(function (x) {
               var key = relKey(x.name);
               if (!key || !window.state || !state.relations[key]) return;
               var cur = seqNum(state.relations[key].seq);
               var want = seqNum(x.seq);
-              if (want == null || cur == null || want >= cur) return;
+              if (want == null) return;
+              // 当前读不出序列（空/凡俗/未知）时，视为可以写入，不再跳过
+              if (cur != null && want >= cur) return;
               if (window.__V86_STRICT__ === true && !evidenceOk(text, key, want)) return;
               if (lock(key, x.seq, 'ai-npcUpdates')) {
                 if (x.path) state.relations[key].path = str(x.path);
+                appliedCount++;
               }
             });
+
+            // 留一份最近一次的原始数据，方便出问题时查（不写进存档，界面上也没有）
+            try {
+              var rels = {};
+              Object.keys((window.state && state.relations) || {}).forEach(function (k) { rels[k] = state.relations[k].seq; });
+              window.__v86Last = {
+                at: new Date().toISOString(),
+                aiSaid: snap,
+                appliedCount: appliedCount,
+                relations: rels
+              };
+            } catch (e2) {}
+
             enforceRatchet();
+            // 界面是在这之前渲染的，写完要再刷一次，面板才会立刻变
+            if (appliedCount > 0 && typeof window.renderUI === 'function') {
+              try { window.renderUI(); } catch (e) {}
+            }
           } catch (e) { console.warn('[V86] 写入序列失败', e); }
         };
 
@@ -30025,6 +29643,40 @@ console.log(
       window.resetWorldState = wrappedReset;
     }
 
+    /* 让 AI 自己把晋升写进结构化字段（前端只负责转达，不猜） */
+    if (typeof window.callAPI === 'function' && !window.callAPI.__v86Prompt) {
+      var innerCall = window.callAPI;
+
+      var wrappedCall = function (msgs) {
+        try {
+          if (Array.isArray(msgs) && msgs.length) {
+            var sysMsg = null;
+            for (var i = 0; i < msgs.length; i++) {
+              if (msgs[i] && msgs[i].role === 'system') { sysMsg = msgs[i]; break; }
+            }
+            var sys = sysMsg ? String(sysMsg.content || '') : '';
+            if (sysMsg && /诡秘|GM_SYSTEM|世界书/.test(sys) && sys.indexOf('【NPC序列同步·硬性要求】') < 0) {
+              sysMsg.content = sys + '\n\n' + NPC_SEQ_RULE;
+            }
+          }
+        } catch (e) {}
+        return innerCall.apply(this, arguments);
+      };
+      wrappedCall.__v86Prompt = true;
+      window.callAPI = wrappedCall;
+    }
+
+    /* 出问题时用：把 AI 最后一次报了什么、现在面板是什么，打成一串文字 */
+    window.v86Dump = function () {
+      try {
+        var out = { last: window.__v86Last || null, ledger: (window.state && state._v86Seq) || {}, relations: {} };
+        Object.keys((window.state && state.relations) || {}).forEach(function (k) {
+          out.relations[k] = { seq: state.relations[k].seq, path: state.relations[k].path };
+        });
+        return JSON.stringify(out);
+      } catch (e) { return '{}'; }
+    };
+
     window.v86SetNpcSeq = function (name, seqText) {
       try {
         var key = relKey(name);
@@ -30069,7 +29721,6 @@ console.log(
   }
 })();
 /* ▲▲▲ V86 完 ▲▲▲ */
-
 </script>
 </body>
 </html>
