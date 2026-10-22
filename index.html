@@ -29650,6 +29650,425 @@ console.log(
   }
 })();
 /* ▲▲▲ V85 完 ▲▲▲ */
+/* ▼▼▼ V86 · NPC 序列：AI 说了算 + 只升不降（只加不改，不动存档结构） ▼▼▼ */
+(function () {
+  'use strict';
+  try {
+    if (window.__V86_NPC_SEQ__) { console.log('[V86] 已安装，跳过重复挂载'); return; }
+
+    var V = window.__V86_NPC_SEQ__ = {
+      version: 2,
+      installedAt: new Date().toISOString(),
+      applied: [],
+      blocked: []
+    };
+
+    function str(v) { return v == null ? '' : String(v); }
+
+    var CN = { '一': 1, '二': 2, '三': 3, '四': 4, '五': 5, '六': 6, '七': 7, '八': 8, '九': 9 };
+
+    /* 序列数字：越小越强。凡人/未知 = 99 */
+    function seqNum(v) {
+      if (v == null) return null;
+      if (typeof v === 'number') return (v >= 0 && v <= 9) ? v : null;
+      var s = str(v).trim();
+      if (!s) return null;
+      if (/(凡人|普通|无序列|未知|none)/i.test(s)) return 99;
+      var m = s.match(/序列\s*([0-9])/);
+      if (m) return parseInt(m[1], 10);
+      m = s.match(/序列\s*([一二三四五六七八九])/);
+      if (m) return CN[m[1]];
+      m = s.match(/^\s*([0-9])\s*$/);
+      if (m) return parseInt(m[1], 10);
+      return null;
+    }
+
+    function aliases(name) {
+      var out = [];
+      var n = str(name).trim();
+      if (!n) return out;
+      out.push(n);
+      var parts = n.split('·');
+      if (parts.length > 1) {
+        parts.forEach(function (p) {
+          p = str(p).trim();
+          if (p.length >= 2 && out.indexOf(p) < 0) out.push(p);
+        });
+      }
+      out.sort(function (a, b) { return b.length - a.length; });
+      return out;
+    }
+
+    function relsOf() {
+      try { return (window.state && window.state.relations) || {}; } catch (e) { return {}; }
+    }
+
+    function relKey(name) {
+      var rels = relsOf();
+      if (!name) return null;
+      if (rels[name]) return name;
+      var as = aliases(name);
+      var keys = Object.keys(rels);
+      for (var i = 0; i < keys.length; i++) {
+        var k = keys[i];
+        if (k === name) return k;
+        var ka = aliases(k);
+        for (var j = 0; j < as.length; j++) {
+          for (var t = 0; t < ka.length; t++) {
+            if (ka[t] === as[j]) return k;
+          }
+        }
+      }
+      return null;
+    }
+
+    function ledger() {
+      var s = window.state;
+      if (!s) return {};
+      if (!s._v86Seq || typeof s._v86Seq !== 'object') s._v86Seq = {};
+      return s._v86Seq;
+    }
+
+    function seedLedger() {
+      var rels = relsOf(), L = ledger();
+      Object.keys(rels).forEach(function (k) {
+        var n = seqNum(rels[k] && rels[k].seq);
+        if (n == null) return;
+        if (!L[k]) { L[k] = { n: n, t: str(rels[k].seq), src: 'seed', at: (window.state && state.time) || '' }; return; }
+        if (n < L[k].n) { L[k].n = n; L[k].t = str(rels[k].seq); }
+      });
+    }
+
+    /*
+     * 唯一的写入口：AI 报什么就写什么，但方向只能是「变强」。
+     * 反方向（序列数字变大 = 变弱）一律拒绝——那是年表在把人往回拽。
+     */
+    function lock(name, seqText, source) {
+      var s = window.state;
+      if (!s || !s.relations) return false;
+      var key = relKey(name);
+      if (!key) return false;
+      var rel = s.relations[key];
+      if (!rel) return false;
+
+      var want = seqNum(seqText);
+      if (want == null) return false;
+
+      var cur = seqNum(rel.seq);
+      var L = ledger();
+      var e = L[key] || { n: 99, t: '凡人' };
+      var floor = (e.n == null) ? 99 : e.n;
+
+      if (cur != null && cur < want) {
+        console.warn('[V86] 拒绝把 ' + key + ' 从 ' + str(rel.seq) + ' 改成更弱的 ' + str(seqText));
+        return false;
+      }
+      if (want > floor) return false;
+
+      rel.seq = str(seqText);
+      L[key] = {
+        n: want,
+        t: str(seqText),
+        src: source || 'ai',
+        at: (s.time || '')
+      };
+      V.applied.push({ name: key, seq: str(seqText), src: source || 'ai', at: s.time || '' });
+      while (V.applied.length > 24) V.applied.shift();
+      console.log('[V86] NPC 序列已更新：' + key + ' → ' + str(seqText) + '（AI 判定）');
+      return true;
+    }
+
+    function enforceRatchet() {
+      var s = window.state;
+      if (!s || !s.relations) return 0;
+      var L = ledger();
+      var fixed = 0;
+
+      Object.keys(s.relations).forEach(function (k) {
+        var rel = s.relations[k];
+        if (!rel) return;
+        var cur = seqNum(rel.seq);
+        if (cur == null) return;
+
+        var e = L[k];
+        if (!e || e.n == null) {
+          L[k] = { n: cur, t: str(rel.seq), src: 'seed', at: (s.time || '') };
+          return;
+        }
+        if (cur > e.n) {
+          var was = str(rel.seq);
+          rel.seq = e.t;
+          fixed++;
+          V.blocked.push({ name: k, from: was, to: e.t, at: s.time || '' });
+          while (V.blocked.length > 24) V.blocked.shift();
+          console.warn('[V86] 拦截 NPC 降级：' + k + ' ' + was + ' → 恢复 ' + e.t);
+        } else if (cur < e.n) {
+          e.n = cur;
+          e.t = str(rel.seq);
+          if (!e.src) e.src = 'observed';
+        }
+      });
+      return fixed;
+    }
+
+    /* 只在「严格模式」下才用：默认关闭，AI 说了算 */
+    function seqInWindow(s) {
+      var m = s.match(/序列\s*([0-9])/) || s.match(/序列\s*([一二三四五六七八九])/);
+      if (!m) return null;
+      return CN[m[1]] != null ? CN[m[1]] : parseInt(m[1], 10);
+    }
+
+    function evidenceOk(text, name, targetSeq) {
+      var src = str(text).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ');
+      if (!src) return false;
+      var target = Number(targetSeq);
+      if (!isFinite(target)) return false;
+      var rels = relsOf();
+      if (!Object.keys(rels).length) return false;
+
+      var sents = src.split(/[。！？!?\n；;]+/);
+      var prevNpc = null;
+
+      for (var i = 0; i < sents.length; i++) {
+        var s = sents[i];
+        if (!s) continue;
+
+        var refs = [];
+        Object.keys(rels).forEach(function (n) {
+          aliases(n).forEach(function (a) {
+            var p = 0;
+            while ((p = s.indexOf(a, p)) >= 0) { refs.push({ pos: p, len: a.length, kind: 'npc', name: n }); p += a.length; }
+          });
+        });
+        ['玩家', '主角', '我', '你'].forEach(function (w) {
+          var p = 0;
+          while ((p = s.indexOf(w, p)) >= 0) { refs.push({ pos: p, len: w.length, kind: 'player' }); p += w.length; }
+        });
+        ['他们', '她们', '自己', '他', '她', '它'].forEach(function (w) {
+          var p = 0;
+          while ((p = s.indexOf(w, p)) >= 0) { refs.push({ pos: p, len: w.length, kind: 'pronoun', word: w }); p += w.length; }
+        });
+        refs.sort(function (a, b) { return a.pos - b.pos; });
+
+        var verbRe = /(晋升|提升|突破|进阶|晋级|成为|达到|踏入|迈入|已至|已是)/g;
+        var vm;
+        while ((vm = verbRe.exec(s)) !== null) {
+          var vp = vm.index;
+          var win = s.slice(Math.max(0, vp - 14), Math.min(s.length, vp + 40));
+          if (seqInWindow(win) !== target) continue;
+
+          var best = null;
+          for (var r = 0; r < refs.length; r++) {
+            if (refs[r].pos + refs[r].len > vp) continue;
+            if (vp - (refs[r].pos + refs[r].len) > 60) continue;
+            if (!best || refs[r].pos > best.pos) best = refs[r];
+          }
+
+          var subj = null;
+          if (best) {
+            if (best.kind === 'npc') subj = best.name;
+            else if (best.kind === 'player') subj = null;
+            else if (best.kind === 'pronoun') {
+              if (best.word === '自己') {
+                for (var f = 0; f < refs.length; f++) {
+                  if (refs[f].kind === 'npc' && refs[f].pos < best.pos) { subj = refs[f].name; break; }
+                }
+              } else {
+                var npc = null;
+                for (var q = 0; q < refs.length; q++) {
+                  if (refs[q].kind === 'npc' && refs[q].pos + refs[q].len <= best.pos) {
+                    if (!npc || refs[q].pos > npc.pos) npc = refs[q];
+                  }
+                }
+                subj = npc ? npc.name : prevNpc;
+              }
+            }
+          }
+          if (!subj) {
+            for (var a2 = 0; a2 < refs.length; a2++) {
+              if (refs[a2].kind === 'npc' && refs[a2].pos >= vp && refs[a2].pos - vp <= 24) { subj = refs[a2].name; break; }
+            }
+          }
+
+          if (subj && relKey(subj) && relKey(subj) === relKey(name)) return true;
+        }
+
+        for (var z = refs.length - 1; z >= 0; z--) {
+          if (refs[z].kind === 'npc') { prevNpc = refs[z].name; break; }
+        }
+      }
+      return false;
+    }
+
+    function narrativeText(data) {
+      try {
+        if (!data) return '';
+        var n = data.narrative;
+        if (typeof n === 'string') return n;
+        if (n && typeof n === 'object') return [n.scene, n.result, n.world].filter(Boolean).join('\n');
+        return [data.text, data.content, data.scene].filter(function (x) { return typeof x === 'string'; }).join('\n');
+      } catch (e) { return ''; }
+    }
+
+    /* ---------------- 挂载 ---------------- */
+
+    seedLedger();
+
+    if (typeof window.applyAI === 'function' && !window.applyAI.__v86) {
+      var innerApply = window.applyAI;
+
+      var wrappedApply = function (data, action) {
+        var snap = [];
+        try {
+          if (data && Array.isArray(data.npcUpdates)) {
+            data.npcUpdates.forEach(function (u) {
+              if (u && u.name && u.seq != null) snap.push({ name: str(u.name), seq: u.seq, path: u.path });
+            });
+          }
+          if (data && data.stateChanges && Array.isArray(data.stateChanges.addRelation)) {
+            data.stateChanges.addRelation.forEach(function (u) {
+              if (u && u.name && u.seq != null) snap.push({ name: str(u.name), seq: u.seq, path: u.path });
+            });
+          }
+        } catch (e) {}
+
+        var after = function () {
+          try {
+            var text = window.__V86_STRICT__ === true ? narrativeText(data) : '';
+            snap.forEach(function (x) {
+              var key = relKey(x.name);
+              if (!key || !window.state || !state.relations[key]) return;
+              var cur = seqNum(state.relations[key].seq);
+              var want = seqNum(x.seq);
+              if (want == null || cur == null || want >= cur) return;
+              if (window.__V86_STRICT__ === true && !evidenceOk(text, key, want)) return;
+              if (lock(key, x.seq, 'ai-npcUpdates')) {
+                if (x.path) state.relations[key].path = str(x.path);
+              }
+            });
+            enforceRatchet();
+          } catch (e) { console.warn('[V86] 写入序列失败', e); }
+        };
+
+        var res = innerApply.apply(this, arguments);
+        if (res && typeof res.then === 'function') {
+          return res.then(function (v) { after(); return v; }, function (err) { after(); throw err; });
+        }
+        after();
+        return res;
+      };
+      wrappedApply.__v86 = true;
+      window.applyAI = wrappedApply;
+    }
+
+    if (typeof window.renderUI === 'function' && !window.renderUI.__v86) {
+      var innerRender = window.renderUI;
+      var wrappedRender = function () {
+        var res = innerRender.apply(this, arguments);
+        try {
+          if (enforceRatchet() > 0 && typeof window.renderRel === 'function') {
+            window.renderRel();
+          }
+        } catch (e) {}
+        return res;
+      };
+      wrappedRender.__v86 = true;
+      window.renderUI = wrappedRender;
+    }
+
+    if (typeof window.buildSave === 'function' && !window.buildSave.__v86) {
+      var innerBuild = window.buildSave;
+      var wrappedBuild = function () {
+        var s = innerBuild.apply(this, arguments);
+        try {
+          if (s && typeof s === 'object') {
+            s.system = s.system || {};
+            s.system._v86Seq = JSON.parse(JSON.stringify((window.state && state._v86Seq) || {}));
+          }
+        } catch (e) {}
+        return s;
+      };
+      wrappedBuild.__v86 = true;
+      window.buildSave = wrappedBuild;
+    }
+
+    if (typeof window.applySave === 'function' && !window.applySave.__v86) {
+      var innerApplySave = window.applySave;
+      var wrappedApplySave = function (d) {
+        var res = innerApplySave.apply(this, arguments);
+        try {
+          var fromSave = null;
+          if (d && d.system && d.system._v86Seq) fromSave = d.system._v86Seq;
+          else if (d && d.__v70State && d.__v70State._v86Seq) fromSave = d.__v70State._v86Seq;
+          if (fromSave && typeof fromSave === 'object') {
+            state._v86Seq = JSON.parse(JSON.stringify(fromSave));
+          } else {
+            state._v86Seq = {};
+          }
+          seedLedger();
+          enforceRatchet();
+        } catch (e) { console.warn('[V86] 读档后序列账本恢复失败', e); }
+        return res;
+      };
+      wrappedApplySave.__v86 = true;
+      window.applySave = wrappedApplySave;
+    }
+
+    if (typeof window.resetWorldState === 'function' && !window.resetWorldState.__v86) {
+      var innerReset = window.resetWorldState;
+      var wrappedReset = function () {
+        var res = innerReset.apply(this, arguments);
+        try { state._v86Seq = {}; } catch (e) {}
+        return res;
+      };
+      wrappedReset.__v86 = true;
+      window.resetWorldState = wrappedReset;
+    }
+
+    window.v86SetNpcSeq = function (name, seqText) {
+      try {
+        var key = relKey(name);
+        if (!key) { console.warn('[V86] 找不到这个 NPC：' + name); return false; }
+        var n = seqNum(seqText);
+        if (n == null) { console.warn('[V86] 认不出这个序列写法：' + seqText); return false; }
+        var L = ledger();
+        state.relations[key].seq = str(seqText);
+        L[key] = { n: n, t: str(seqText), src: 'manual', at: state.time || '' };
+        if (typeof renderUI === 'function') renderUI();
+        console.log('[V86] 已手动校正 ' + key + ' → ' + seqText);
+        return true;
+      } catch (e) { console.warn('[V86] 校正失败', e); return false; }
+    };
+
+    window.v86SeqAudit = function () {
+      var rows = [];
+      try {
+        var L = ledger(), rels = relsOf();
+        Object.keys(rels).forEach(function (k) {
+          rows.push({ npc: k, 当前: rels[k].seq, 底线: L[k] && L[k].t, 来源: L[k] && L[k].src, 时间: L[k] && L[k].at });
+        });
+        console.log('[V86 NPC 序列盘点]', rows);
+      } catch (e) { console.warn('[V86] 盘点失败', e); }
+      return rows;
+    };
+
+    V._test = {
+      seqNum: seqNum,
+      aliases: aliases,
+      evidenceOk: evidenceOk,
+      lock: lock,
+      enforceRatchet: enforceRatchet,
+      seedLedger: seedLedger,
+      relKey: relKey
+    };
+
+    console.log('%c[V86] NPC 序列：AI 判定后直接写入面板；只升不降；严格模式默认关闭。不动存档结构。',
+      'color:#7c3aed;font-weight:700');
+  } catch (e) {
+    console.warn('[V86] 安装失败（不影响原游戏）', e);
+  }
+})();
+/* ▲▲▲ V86 完 ▲▲▲ */
 
 </script>
 </body>
