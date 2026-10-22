@@ -28442,319 +28442,581 @@ console.log(
   console.log('%c[V79] 已安装：下一轮AI复核NPC晋升/房产/货币；保留原有前端防护与其他板块。','color:#0f766e;font-weight:700');
 })();
 /* ▲▲▲ V79 完 ▲▲▲ */
-/* ▼▼▼ V81 · API生成链路修复（不修改存档） ▼▼▼ */
+/* ▼▼▼ V81/V82 修订版 · 基于 index(7).html 的请求链修复 ▼▼▼ */
 (function(){
   'use strict';
-  if(window.__V81_REQUEST_CHAIN_REPAIR__) return;
-  window.__V81_REQUEST_CHAIN_REPAIR__ = true;
+  if (window.__V8182_REPAIRED_FOR_INDEX7__) return;
+  window.__V8182_REPAIRED_FOR_INDEX7__ = true;
 
-  var WB = '【玩家录入的完整世界书·按需注入】';
-  var WB_FULL = '【完整《诡秘之主世界书 v5.0》底层总纲】';
-  var RECALL = '【倒排索引召回的相关记忆】';
-  var RECENT = '【最近经历】';
+  var WB_MARK = '【玩家录入的完整世界书·按需注入】';
+  var WB_FULL_MARK = '【完整《诡秘之主世界书 v5.0》底层总纲】';
+  var RECALL_MARK = '【倒排索引召回的相关记忆】';
+  var RECENT_MARK = '【最近经历】';
+  var CHAT_TIMEOUT_MS = 120000;
+  var activeTargetIndex = null;
+  var lastFailure = null;
+  var apiQueue = Promise.resolve();
 
-  function copy(v){
-    try { return v == null ? v : JSON.parse(JSON.stringify(v)); }
-    catch(e) { return v; }
+  var V59_RULE = [
+    '【V59·原著时间线权威层】',
+    '旧 V8/V32 时间线表属于遗留资料，不得作为 NPC 当前状态的最终事实来源。',
+    '原著节点会按当前日期后台推进；玩家不在现场不等于事件暂停。',
+    '已确认的 NPC 更高位阶优先于旧时间线；允许合法晋升，旧时间线不得无理由降级。',
+    'AI 正文明确写出人物“晋升/成为/现在是/已经是”等当前序列时，应同步为事实；结构化 npcUpdates/addRelation 同样有效。',
+    '已有“序列X·名称”时必须保留名称，不要把它压缩成只有数字。'
+  ].join('\n');
+
+  var RECIPE_RULE = [
+    '【魔药与配方获取修正规则】',
+    '“禁止突然出现魔药配方”只禁止没有剧情因果的凭空获得。',
+    '教会、势力、NPC赠予、交易、古籍、调查、冒险奖励、战利品、隐秘组织、合理任务报酬、玩家自身研究等产生的真实获得必须允许。',
+    '正文明确写出已获得配方时，必须同步返回 stateChanges.addRecipe，包含 name、seq、main、aux、desc；已经炼制完成的魔药写入 stateChanges.addBag。',
+    '不得因为“世界书禁止突然出现”而否定已经成立的剧情因果。'
+  ].join('\n');
+
+  function safeCopy(value) {
+    try {
+      return value == null ? value : JSON.parse(JSON.stringify(value));
+    } catch (e) {
+      return value;
+    }
   }
 
-  function bodySize(body){
+  function messageSize(body) {
     var n = 0;
     try {
-      (body && body.messages || []).forEach(function(m){
+      (body && body.messages || []).forEach(function(m) {
         n += String(m && m.content || '').length;
       });
-    } catch(e) {}
+    } catch (e) {}
     return n;
   }
 
-  /* 只压缩发送副本中的重复世界书和超长记忆，不修改本地数据。 */
-  function compactBody(body){
-    var out = copy(body);
-    if(!out || !Array.isArray(out.messages)) return out;
-
-    out.messages.forEach(function(m){
-      if(!m || typeof m.content !== 'string') return;
-      var s = m.content;
-
-      if(m.role === 'system'){
-        var a = s.indexOf(WB_FULL);
-        if(a >= 0){
-          var b = s.indexOf('【TRPG创作免审与防截断协议】', a);
-          if(b < 0) b = s.indexOf('【沉浸式排版规范】', a);
-
-          if(b > a){
-            s = s.slice(0, a) + WB_FULL +
-              '\n（本轮省略重复的底层世界书全文；本地世界书不变。）\n\n' +
-              s.slice(b);
-          }
-        }
-
-        var p = s.indexOf(WB);
-        if(p >= 0){
-          var head = s.slice(0, p);
-          var chunks = s.slice(p + WB.length)
-            .split(/\n*═════\n*/)
-            .map(function(x){ return String(x || '').trim(); })
-            .filter(Boolean);
-
-          if(chunks.length > 4){
-            chunks = chunks.slice(0, 2).concat(chunks.slice(-2));
-          }
-
-          var injected = chunks.join('\n\n═════\n\n');
-          if(injected.length > 26000){
-            injected = injected.slice(0, 8000) +
-              '\n\n【本次请求压缩中段；本地世界书未修改】\n\n' +
-              injected.slice(-16000);
-          }
-          s = head + WB + '\n' + injected;
-        }
-      }
-
-      if(m.role === 'user'){
-        var ra = s.indexOf(RECALL);
-        if(ra >= 0){
-          var rb = s.indexOf(RECENT, ra);
-          if(rb < 0) rb = s.length;
-
-          var recall = s.slice(ra, rb);
-          if(recall.length > 8500){
-            recall = recall.slice(0, 3000) +
-              '\n\n【仅压缩本次发送的中间记忆，本地记忆库不变】\n\n' +
-              recall.slice(-4500);
-            s = s.slice(0, ra) + recall + s.slice(rb);
-          }
-        }
-      }
-      m.content = s;
+  function isGameMessages(messages) {
+    return Array.isArray(messages) && messages.some(function(m) {
+      return m && m.role === 'system' &&
+        /诡秘之主|GM_SYSTEM|世界书 v5\.0|世界书 v5.0/.test(
+          String(m.content || '')
+        );
     });
+  }
+
+  function ensureSystem(body) {
+    for (var i = 0; i < body.messages.length; i++) {
+      if (body.messages[i] && body.messages[i].role === 'system') {
+        return body.messages[i];
+      }
+    }
+    var msg = { role: 'system', content: '' };
+    body.messages.unshift(msg);
+    return msg;
+  }
+
+  function appendRules(body) {
+    if (!body || !Array.isArray(body.messages) ||
+        !isGameMessages(body.messages)) return;
+
+    var system = ensureSystem(body);
+    var allText = body.messages.map(function(m) {
+      return String(m && m.content || '');
+    }).join('\n');
+
+    if (system.content.indexOf('【V59·原著时间线权威层】') < 0) {
+      system.content += '\n\n' + V59_RULE;
+    }
+
+    if (
+      system.content.indexOf('【魔药与配方获取修正规则】') < 0 &&
+      /魔药|配方|晋升|炼制|药剂|扮演|失控|服食魔药/.test(allText)
+    ) {
+      system.content += '\n\n' + RECIPE_RULE;
+    }
+
+    for (var j = body.messages.length - 1; j >= 0; j--) {
+      var m = body.messages[j];
+      if (m && m.role === 'user') {
+        if (String(m.content || '').indexOf('【V59·原著时间线权威层】') < 0) {
+          m.content = String(m.content || '') + '\n\n' + V59_RULE;
+        }
+        break;
+      }
+    }
+  }
+
+  function compactInjectedWorldbook(text, aggressive) {
+    var s = String(text || '');
+    var p = s.indexOf(WB_MARK);
+    if (p < 0) return s;
+
+    var head = s.slice(0, p).trimEnd();
+    var block = s.slice(p + WB_MARK.length).trim();
+
+    var chunks = block.split(/\n*═════\n*/).map(function(x) {
+      return String(x || '')
+        .replace(/[ \t]+/g, ' ')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+    }).filter(Boolean);
+
+    if (chunks.length > 4) {
+      chunks = chunks.slice(0, 2).concat(chunks.slice(-2));
+    }
+
+    var kept = chunks.join('\n\n═════\n\n');
+
+    if (aggressive && kept.length > 30000) {
+      kept = kept.slice(0, 9000) +
+        '\n\n【世界书中段压缩；本地世界书未修改】\n\n' +
+        kept.slice(-20000);
+    } else if (!aggressive && kept.length > 62000) {
+      kept = kept.slice(0, 14000) +
+        '\n\n【世界书中段压缩；本地世界书未修改】\n\n' +
+        kept.slice(-44000);
+    }
+
+    return head + '\n\n' + WB_MARK + '\n' + kept;
+  }
+
+  function removeDuplicatedBuiltinWorldbook(text, hasInjectedBook) {
+    var s = String(text || '');
+
+    // 未另外注入世界书时，保留原有完整内置世界书。
+    if (!hasInjectedBook) return s;
+
+    var a = s.indexOf(WB_FULL_MARK);
+    if (a < 0) return s;
+
+    var b = s.indexOf('【TRPG创作免审与防截断协议】', a);
+    if (b < 0) b = s.indexOf('【沉浸式排版规范】', a);
+    if (b < 0) return s;
+
+    return s.slice(0, a) + WB_FULL_MARK +
+      '\n（本次请求已附加相关世界书章节，因此省略重复的内置世界书全文；本地数据未修改。）\n\n' +
+      s.slice(b);
+  }
+
+  function compactRecall(text, aggressive) {
+    var s = String(text || '');
+    var a = s.indexOf(RECALL_MARK);
+    if (a < 0) return s;
+
+    var b = s.indexOf(RECENT_MARK, a);
+    if (b < 0) b = s.length;
+
+    var recall = s.slice(a, b);
+    var limit = aggressive ? 7000 : 14000;
+    if (recall.length <= limit) return s;
+
+    recall = recall.slice(0, aggressive ? 2500 : 5000) +
+      '\n\n【中间历史记忆仅在本次请求中压缩；本地记忆库未修改】\n\n' +
+      recall.slice(-(aggressive ? 4000 : 8500));
+
+    return s.slice(0, a) + recall + s.slice(b);
+  }
+
+  function prepareBody(body) {
+    var out = safeCopy(body);
+    if (!out || !Array.isArray(out.messages)) return out;
+
+    appendRules(out);
+
+    var hasInjectedBook = out.messages.some(function(m) {
+      return String(m && m.content || '').indexOf(WB_MARK) >= 0;
+    });
+
+    var size = messageSize(out);
+
+    if (size > 60000) {
+      // 第一阶段优先压缩重复注入块和长记忆，尽量保留内置原著资料。
+      out.messages.forEach(function(m) {
+        if (!m || typeof m.content !== 'string') return;
+
+        if (m.role === 'system') {
+          m.content = compactInjectedWorldbook(m.content, false);
+        } else if (m.role === 'user') {
+          m.content = compactRecall(m.content, false);
+        }
+      });
+    }
+
+    if (messageSize(out) > 85000) {
+      // 只有请求仍然很大、且另有按需注入世界书时，才省略重复全文。
+      out.messages.forEach(function(m) {
+        if (!m || typeof m.content !== 'string') return;
+
+        if (m.role === 'system') {
+          m.content = removeDuplicatedBuiltinWorldbook(
+            m.content, hasInjectedBook
+          );
+          m.content = compactInjectedWorldbook(m.content, true);
+        } else if (m.role === 'user') {
+          m.content = compactRecall(m.content, true);
+        }
+      });
+    }
 
     return out;
   }
 
-  function urlOf(input){
-    try {
-      if(typeof input === 'string') return input;
-      if(input && input.url) return String(input.url);
-    } catch(e) {}
-    return String(input || '');
+  function classifyError(err, timedOut) {
+    if (timedOut || (err && err.name === 'AbortError')) return 'timeout';
+
+    var s = String(err && (err.message || err.name) || err || '');
+
+    if (/HTTP\s+\d{3}/i.test(s)) return 'http';
+
+    if (/invalid json|不是合法 json|返回结构异常|缺少可用正文/i.test(s)) {
+      return 'response';
+    }
+
+    if (/load failed|failed to fetch|networkerror|network error|fetch failed|connection.*lost|err_network|网络/i.test(s)) {
+      return 'network';
+    }
+
+    return 'other';
   }
 
-  function isProxy(url){
-    return /corsproxy\.io|api\.allorigins\.win|api\.codetabs\.com/i.test(url);
-  }
-
-  function isGameAPI(url){
-    return /\/chat\/completions(?:[/?#]|$)/i.test(url) || isProxy(url);
-  }
-
-  function timeoutFor(url){
-    var mode = '';
-    try { mode = window.cfg && window.cfg.proxyMode || ''; } catch(e) {}
-
-    /* 自动模式时公共代理仅作为快速备选；手动指定的地址保留更长等待时间。 */
-    if(isProxy(url) && mode === 'auto') return 18000;
-    return 40000;
-  }
-
-  function saveFailure(url, err, kind){
-    var rows = window.__V81_API_LAST_FAILURES || [];
-    rows.push({
+  function recordFailure(url, started, err, timedOut) {
+    var record = {
       at: new Date().toISOString(),
-      url: String(url || '').slice(0, 180),
-      kind: kind || 'request',
+      url: String(url || '').slice(0, 200),
+      elapsedMs: Date.now() - started,
+      kind: classifyError(err, timedOut),
       name: String(err && err.name || ''),
-      message: String(err && err.message || err || '').slice(0, 240)
-    });
-    while(rows.length > 8) rows.shift();
-    window.__V81_API_LAST_FAILURES = rows;
+      message: String(err && (err.message || err.name) || err || '').slice(0, 400)
+    };
+
+    lastFailure = record;
+    window.__V8182_LAST_REQUEST_FAILURE__ = record;
+
+    var list = window.__V8182_REQUEST_ERRORS__ ||
+      (window.__V8182_REQUEST_ERRORS__ = []);
+
+    list.push(record);
+    while (list.length > 8) list.shift();
+
+    console.error('[V81/V82修订] 请求失败诊断：', record);
+    return record;
   }
 
   /*
-   * 将浏览器底层网络错误转换为不触发旧版 Load failed
-   * 压缩重试的标记错误。callAPI 仍可按既有逻辑尝试下一个地址。
+   * 单一底层请求实现：
+   * 1. 120 秒生成超时，不再采用 V81 过短的 18/40 秒中止。
+   * 2. 超时器一直保留到完整响应正文读取结束。
+   * 3. 底层不再进行 V61.4/V61.5 那种嵌套重试。
    */
-  function transportError(url, err){
-    saveFailure(url, err, 'network');
-    console.warn(
-      '[V81] API网络传输失败；跳过重复压缩重试，转交现有地址回退。',
-      url, err
+  window.unifiedRequest = async function(url, key, body, timeout) {
+    var outgoing = prepareBody(body);
+    var isChat = !!(
+      outgoing &&
+      Array.isArray(outgoing.messages) &&
+      outgoing.model
     );
-    var e = new Error('V81_TRANSPORT_FAILURE（API网络连接失败）');
-    e.name = 'V81TransportError';
-    return e;
+
+    var timeoutMs = isChat ?
+      CHAT_TIMEOUT_MS :
+      (Number(timeout) || 15000);
+
+    var started = Date.now();
+    var controller = typeof AbortController !== 'undefined' ?
+      new AbortController() : null;
+
+    var timedOut = false;
+    var timer = null;
+    var recorded = false;
+
+    // 开始新的请求时不继承上一轮的错误标记。
+    lastFailure = null;
+    window.__V8182_LAST_REQUEST_FAILURE__ = null;
+
+    try {
+      if (controller) {
+        timer = setTimeout(function() {
+          timedOut = true;
+          try { controller.abort(); } catch (e) {}
+        }, timeoutMs);
+      }
+
+      var resp = await fetch(url, {
+        method: outgoing ? 'POST' : 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + String(key || '')
+        },
+        body: outgoing ? JSON.stringify(outgoing) : undefined,
+        signal: controller ? controller.signal : undefined
+      });
+
+      // 不在读取正文之前清除超时器。
+      var raw = await resp.text();
+      if (timer) {
+        clearTimeout(timer);
+        timer = null;
+      }
+
+      if (!resp.ok) {
+        var httpError = new Error(
+          'HTTP ' + resp.status + ': ' + String(raw || '').slice(0, 500)
+        );
+        httpError.status = resp.status;
+        recordFailure(url, started, httpError, false);
+        recorded = true;
+        throw httpError;
+      }
+
+      var data;
+
+      try {
+        data = JSON.parse(raw);
+      } catch (parseErr) {
+        var badJson = new Error(
+          'API 已返回响应，但不是合法 JSON：' +
+          String(raw || '').slice(0, 220)
+        );
+        recordFailure(url, started, badJson, false);
+        recorded = true;
+        throw badJson;
+      }
+
+      if (isChat) {
+        if (!data || !data.choices ||
+            !data.choices[0] || !data.choices[0].message) {
+          var shapeError = new Error(
+            'API 已返回，但缺少 choices[0].message：' +
+            JSON.stringify(data).slice(0, 250)
+          );
+          recordFailure(url, started, shapeError, false);
+          recorded = true;
+          throw shapeError;
+        }
+
+        var content = data.choices[0].message.content;
+
+        if (Array.isArray(content)) {
+          content = content.map(function(part) {
+            return part && typeof part.text === 'string' ?
+              part.text : '';
+          }).join('\n');
+
+          data.choices[0].message.content = content;
+        }
+
+        if (typeof content !== 'string') {
+          var emptyError = new Error(
+            'API 已响应，但没有可供游戏解析的正文 content。' +
+            '请检查模型或服务商的响应格式。'
+          );
+          recordFailure(url, started, emptyError, false);
+          recorded = true;
+          throw emptyError;
+        }
+      }
+
+      lastFailure = null;
+      window.__V8182_LAST_REQUEST_FAILURE__ = null;
+      return data;
+
+    } catch (err) {
+      if (!recorded) {
+        recordFailure(url, started, err, timedOut);
+      }
+      throw err;
+
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  };
+
+  window.unifiedRequest.__v8182SingleSend = true;
+
+  /*
+   * 保留已有 callAPI 包装链。
+   * 自动模式最多换一个备用地址，避免旧版把一轮行动发往全部代理。
+   */
+  if (
+    typeof window.buildTargets === 'function' &&
+    typeof window.callAPI === 'function' &&
+    !window.callAPI.__v8182BoundedRetry
+  ) {
+    var originalBuildTargets = window.buildTargets;
+    var originalCallAPI = window.callAPI;
+
+    window.buildTargets = function(baseUrl, path, proxyMode) {
+      var all = originalBuildTargets.call(
+        this, baseUrl, path, proxyMode
+      ) || [];
+
+      var idx = activeTargetIndex;
+
+      if (idx === null || idx === undefined) return all;
+
+      return idx >= 0 && idx < all.length ? [all[idx]] : [];
+    };
+
+    window.buildTargets.__v8182BoundedTargets = true;
+
+    var stableCallAPI = function(messages, cfgArg) {
+      var self = this;
+      var conf = cfgArg || window.cfg || {};
+      var originalMessages = safeCopy(messages);
+
+      var allTargets = originalBuildTargets.call(
+        self, conf.baseUrl, '/chat/completions', conf.proxyMode
+      ) || [];
+
+      if (!allTargets.length) {
+        return Promise.reject(new Error(
+          '没有可用的 API 请求地址，请检查 Base URL 和连接方式。'
+        ));
+      }
+
+      var autoMode = String(conf.proxyMode || '') === 'auto';
+      var maxAttempts = autoMode ?
+        Math.min(2, allTargets.length) : 1;
+
+      function run() {
+        async function attempt(i) {
+          activeTargetIndex = i;
+          window.__V8182_ACTIVE_TARGET_INDEX__ = i;
+          window.__V8182_LAST_REQUEST_FAILURE__ = null;
+
+          var value;
+          var caught = null;
+          var detail = null;
+
+          try {
+            value = await originalCallAPI.call(
+              self, safeCopy(originalMessages), conf
+            );
+          } catch (err) {
+            caught = err;
+            detail = window.__V8182_LAST_REQUEST_FAILURE__;
+          } finally {
+            activeTargetIndex = null;
+            window.__V8182_ACTIVE_TARGET_INDEX__ = null;
+          }
+
+          if (!caught) return value;
+
+          var kind = detail && detail.kind;
+
+          // 只因明确的浏览器网络层失败切换一次。
+          // HTTP、鉴权、模型或响应格式错误不盲目重试。
+          if (
+            autoMode &&
+            i === 0 &&
+            maxAttempts > 1 &&
+            kind === 'network'
+          ) {
+            console.warn(
+              '[V81/V82修订] 首选地址网络失败，改用一个备用地址。' +
+              '只重试一次，以限制重复计费。'
+            );
+            return attempt(1);
+          }
+
+          throw caught;
+        }
+
+        return attempt(0);
+      }
+
+      // 串行请求，避免测试连接和游戏行动并发时目标地址索引互相覆盖。
+      var task = apiQueue.then(run, run);
+      apiQueue = task.then(function(){}, function(){});
+      return task;
+    };
+
+    stableCallAPI.__v8182BoundedRetry = true;
+    window.callAPI = stableCallAPI;
   }
 
   /*
-   * 超时覆盖响应正文读取阶段。
-   * 只接管游戏 API 与现有代理，不干扰其他联网核验。
+   * 失败时恢复行动文字，不自动再次发送。
    */
-  if(typeof window.fetch === 'function' && !window.fetch.__v81ApiFetch){
-    var nativeFetch = window.fetch;
+  if (
+    typeof window.execute === 'function' &&
+    !window.execute.__v8182RestoreFailedAction
+  ) {
+    var originalExecute = window.execute;
 
-    var wrappedFetch = function(input, init){
-      var url = urlOf(input);
-      if(!isGameAPI(url)) return nativeFetch.apply(this, arguments);
-
-      init = init || {};
-      if(typeof AbortController === 'undefined'){
-        return nativeFetch.apply(this, arguments);
-      }
-
-      var controller = new AbortController();
-      var oldSignal = init.signal;
-      var finished = false;
-
-      function relayAbort(){
-        try { controller.abort(); } catch(e) {}
-      }
-
-      function cleanup(){
-        if(finished) return;
-        finished = true;
-        clearTimeout(timer);
-        try {
-          if(oldSignal && oldSignal.removeEventListener){
-            oldSignal.removeEventListener('abort', relayAbort);
-          }
-        } catch(e) {}
-      }
-
-      var timer = setTimeout(relayAbort, timeoutFor(url));
-
-      try {
-        if(oldSignal){
-          if(oldSignal.aborted) relayAbort();
-          else if(oldSignal.addEventListener){
-            oldSignal.addEventListener('abort', relayAbort, {once:true});
-          }
-        }
-      } catch(e) {}
-
-      var nextInit = {};
-      Object.keys(init).forEach(function(k){ nextInit[k] = init[k]; });
-      nextInit.signal = controller.signal;
-
-      return nativeFetch.call(this, input, nextInit).then(function(resp){
-        ['json','text','arrayBuffer','blob','formData'].forEach(function(method){
-          try {
-            if(typeof resp[method] !== 'function') return;
-            var reader = resp[method].bind(resp);
-            resp[method] = function(){
-              return reader.apply(null, arguments).then(function(value){
-                cleanup();
-                return value;
-              }, function(err){
-                cleanup();
-                if(err && (err.name === 'AbortError' ||
-                  /abort/i.test(String(err.message || '')))){
-                  saveFailure(url, err, 'timeout-or-abort');
-                  throw err;
-                }
-                if(err && (err.name === 'TypeError' ||
-                  /load failed|failed to fetch|network/i.test(String(err.message || '')))){
-                  throw transportError(url, err);
-                }
-                throw err;
-              });
-            };
-          } catch(e) {}
-        });
-        return resp;
-      }).catch(function(err){
-        cleanup();
-        if(err && (err.name === 'AbortError' ||
-          /abort/i.test(String(err.message || '')))){
-          saveFailure(url, err, 'timeout-or-abort');
-          throw err;
-        }
-        if(err && (err.name === 'TypeError' ||
-          /load failed|failed to fetch|network/i.test(String(err.message || '')))){
-          throw transportError(url, err);
-        }
-        throw err;
-      });
-    };
-
-    wrappedFetch.__v81ApiFetch = true;
-    window.fetch = wrappedFetch;
-  }
-
-  /* 最外层：每次地址尝试使用独立副本，并限制单地址等待时间。 */
-  if(typeof window.unifiedRequest === 'function' &&
-     !window.unifiedRequest.__v81RequestChain){
-    var oldUnifiedRequest = window.unifiedRequest;
-
-    var wrappedUnifiedRequest = async function(url, key, body, timeout){
-      var outgoing = compactBody(body);
-      var limitedTimeout = Math.min(
-        Number(timeout) || 45000,
-        timeoutFor(String(url || ''))
-      );
-
-      try {
-        return await oldUnifiedRequest.call(
-          this, url, key, outgoing, limitedTimeout
-        );
-      } catch(err) {
-        saveFailure(url, err, 'unifiedRequest');
-        throw err;
-      }
-    };
-
-    wrappedUnifiedRequest.__v81RequestChain = true;
-    window.unifiedRequest = wrappedUnifiedRequest;
-  }
-
-  /* 生成失败时把刚才的输入放回输入框；不自动重新发送。 */
-  if(typeof window.execute === 'function' &&
-     !window.execute.__v81KeepFailedAction){
-    var oldExecute = window.execute;
-
-    var wrappedExecute = async function(){
+    var safeExecute = async function() {
       var input = document.getElementById('actionInput');
       var action = String(input && input.value || '').trim();
 
-      await oldExecute.apply(this, arguments);
+      var logBefore =
+        window.state && Array.isArray(window.state.log) ?
+          window.state.log.length : 0;
+
+      var result;
 
       try {
-        var logs = window.state && window.state.log || [];
-        var last = logs.length ? logs[logs.length - 1] : null;
-        var content = String(last && last.content || '').replace(/<[^>]+>/g, ' ');
+        result = await originalExecute.apply(this, arguments);
+      } finally {
+        try {
+          var log =
+            window.state && Array.isArray(window.state.log) ?
+              window.state.log.slice(logBefore) : [];
 
-        if(action && /灵界连接发生异常/.test(content) &&
-           input && !input.value.trim()){
-          input.value = action;
-          if(typeof toast === 'function'){
-            toast('本轮未生成，已保留行动文字；网络恢复后可手动重试。');
+          var failed = log.some(function(entry) {
+            return /灵界连接发生异常|API 已返回，但缺少|没有可供游戏解析/.test(
+              String(entry && entry.content || '').replace(/<[^>]*>/g, ' ')
+            );
+          });
+
+          if (
+            failed &&
+            action &&
+            input &&
+            !String(input.value || '').trim()
+          ) {
+            input.value = action;
+
+            if (typeof toast === 'function') {
+              toast(
+                '本轮未成功生成，已保留行动文字；请先检查错误信息，' +
+                '不会自动重复发送。'
+              );
+            }
           }
-        }
-      } catch(e) {}
+        } catch (e) {}
+      }
+
+      return result;
     };
 
-    wrappedExecute.__v81KeepFailedAction = true;
-    window.execute = wrappedExecute;
+    safeExecute.__v8182RestoreFailedAction = true;
+    window.execute = safeExecute;
   }
 
-  window.v81RequestCheck = function(){
+  window.v8182RequestCheck = function() {
     var result = {
-      installed: !!window.__V81_REQUEST_CHAIN_REPAIR__,
-      fetchWrapped: !!(window.fetch && window.fetch.__v81ApiFetch),
-      requestWrapped: !!(window.unifiedRequest && window.unifiedRequest.__v81RequestChain),
-      executeWrapped: !!(window.execute && window.execute.__v81KeepFailedAction),
-      lastFailures: (window.__V81_API_LAST_FAILURES || []).slice(-8)
+      installed: !!window.__V8182_REPAIRED_FOR_INDEX7__,
+      singleSend: !!(
+        window.unifiedRequest &&
+        window.unifiedRequest.__v8182SingleSend
+      ),
+      boundedRetry: !!(
+        window.callAPI &&
+        window.callAPI.__v8182BoundedRetry
+      ),
+      currentMode: window.cfg && window.cfg.proxyMode || '(unknown)',
+      lastFailure: lastFailure,
+      recentFailures: (
+        window.__V8182_REQUEST_ERRORS__ || []
+      ).slice(-8)
     };
-    console.log('[V81 请求链检查]', result);
+
+    console.log('[V81/V82修订检查]', result);
     return result;
   };
 
   console.log(
-    '%c[V81] API请求链修复已挂载（不修改存档/API配置/游戏状态）',
+    '%c[V81/V82修订版] 已挂载：统一请求、120秒生成超时、最多一次备用地址、保留失败行动；不修改存档。',
     'color:#0f766e;font-weight:700'
   );
 })();
-/* ▲▲▲ V81 完 ▲▲▲ */
+/* ▲▲▲ V81/V82 修订版结束 ▲▲▲ */
 </script>
 </body>
 </html>
