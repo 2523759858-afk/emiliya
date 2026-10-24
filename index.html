@@ -29228,17 +29228,18 @@ console.log(
 })();
 /* ▲▲▲ V84 完 ▲▲▲ */
 
-/* ▼▼▼ V86 · NPC 序列：AI 说了算 + 只升不降（只加不改，不动存档结构） ▼▼▼ */
+/* ▼▼▼ V86 · NPC 序列：只认本轮 npcUpdates / 数值联动 / 可手动纠正 ▼▼▼ */
 (function () {
   'use strict';
   try {
     if (window.__V86_NPC_SEQ__) { console.log('[V86] 已安装，跳过重复挂载'); return; }
 
     var V = window.__V86_NPC_SEQ__ = {
-      version: 2,
+      version: 3,
       installedAt: new Date().toISOString(),
       applied: [],
-      blocked: []
+      blocked: [],
+      reverted: []
     };
 
     function str(v) { return v == null ? '' : String(v); }
@@ -29247,13 +29248,14 @@ console.log(
 
     var NPC_SEQ_RULE = [
       '【NPC序列同步·硬性要求】',
-      '1. 本轮正文里任何角色（NPC）的序列发生了变化（晋升、完成晋升仪式、服下魔药成功），必须在 npcUpdates 数组里为该角色写出 name 与 seq。只写在正文里、不写进 npcUpdates，面板就不会更新。',
-      '2. seq 写成「序列6·无面人」或「序列6」都可以，name 必须是该角色的全名或常用名。',
-      '3. 玩家自己的晋升只写 playerUpdate，不要写进任何 NPC 的 npcUpdates。',
-      '4. 本轮没有任何角色晋升时，不要写 seq，也不要为了填字段而编造。'
+      '1. 只有本轮剧情里「真的发生了」的序列变化（晋升、服下魔药成功、完成晋升仪式），才在 npcUpdates 里写该角色的 name 与 seq。',
+      '2. 以下情况一律不要写 seq：背景介绍、回忆、旁人提到他的位阶、档案补充、把已知信息再抄一遍。',
+      '3. 不要用 npcProfiles 或 addRelation 去更新已有角色的序列，它们只用于新角色。',
+      '4. 玩家自己的序列只写 playerUpdate，不要写进任何 NPC。',
+      '5. 本轮没有任何角色晋升，就不要写 seq。'
     ].join('\n');
 
-    /* 序列数字：越小越强。凡人/未知 = 99 */
+    /* 序列数字：越小越强。凡人/凡俗/未知 = 99 */
     function seqNum(v) {
       if (v == null) return null;
       if (typeof v === 'number') return (v >= 0 && v <= 9) ? v : null;
@@ -29264,8 +29266,6 @@ console.log(
       if (m) return parseInt(m[1], 10);
       m = s.match(/序列\s*([一二三四五六七八九])/);
       if (m) return CN[m[1]];
-      m = s.match(/^\s*([0-9])\s*$/);
-      if (m) return parseInt(m[1], 10);
       m = s.match(/^\s*([0-9])(?![0-9])/);
       if (m) return parseInt(m[1], 10);
       return null;
@@ -29299,7 +29299,6 @@ console.log(
       var keys = Object.keys(rels);
       for (var i = 0; i < keys.length; i++) {
         var k = keys[i];
-        if (k === name) return k;
         var ka = aliases(k);
         for (var j = 0; j < as.length; j++) {
           for (var t = 0; t < ka.length; t++) {
@@ -29327,10 +29326,38 @@ console.log(
       });
     }
 
-    /*
-     * 唯一的写入口：AI 报什么就写什么，但方向只能是「变强」。
-     * 反方向（序列数字变大 = 变弱）一律拒绝——那是年表在把人往回拽。
-     */
+    /* 数值跟着序列走（和游戏原生的算法一致） */
+    function applyStats(rel) {
+      try {
+        var f = window.calcMaxStats;
+        if (typeof f !== 'function' || !rel) return;
+        var m = f(rel.path || '凡俗', rel.seq || '凡俗');
+        if (!m || m.maxHp == null) return;
+        rel.maxHp = m.maxHp;
+        rel.maxMp = m.maxMp;
+        rel.maxSp = m.maxSp;
+        rel.hp = m.maxHp;
+        rel.mp = m.maxMp;
+        rel.sp = m.maxSp;
+      } catch (e) {}
+    }
+
+    /* 只把上限对齐，不补满（用在被拒绝的改动上，避免白送一支血） */
+    function syncMax(rel) {
+      try {
+        var f = window.calcMaxStats;
+        if (typeof f !== 'function' || !rel) return;
+        var m = f(rel.path || '凡俗', rel.seq || '凡俗');
+        if (!m || m.maxHp == null) return;
+        rel.maxHp = m.maxHp;
+        rel.maxMp = m.maxMp;
+        rel.maxSp = m.maxSp;
+        if (rel.hp == null || rel.hp > rel.maxHp) rel.hp = rel.maxHp;
+        if (rel.mp == null || rel.mp > rel.maxMp) rel.mp = rel.maxMp;
+        if (rel.sp == null || rel.sp > rel.maxSp) rel.sp = rel.maxSp;
+      } catch (e) {}
+    }
+
     function lock(name, seqText, source) {
       var s = window.state;
       if (!s || !s.relations) return false;
@@ -29343,25 +29370,20 @@ console.log(
       if (want == null) return false;
 
       var cur = seqNum(rel.seq);
-      var L = ledger();
-      var e = L[key] || { n: 99, t: '凡人' };
-      var floor = (e.n == null) ? 99 : e.n;
-
       if (cur != null && cur < want) {
         console.warn('[V86] 拒绝把 ' + key + ' 从 ' + str(rel.seq) + ' 改成更弱的 ' + str(seqText));
         return false;
       }
 
       rel.seq = str(seqText);
-      L[key] = {
-        n: want,
-        t: str(seqText),
-        src: source || 'ai',
-        at: (s.time || '')
-      };
+      applyStats(rel);
+
+      var L = ledger();
+      L[key] = { n: want, t: str(seqText), src: source || 'ai', at: (s.time || '') };
+
       V.applied.push({ name: key, seq: str(seqText), src: source || 'ai', at: s.time || '' });
       while (V.applied.length > 24) V.applied.shift();
-      console.log('[V86] NPC 序列已更新：' + key + ' → ' + str(seqText) + '（AI 判定）');
+      console.log('[V86] NPC 序列已更新：' + key + ' → ' + str(seqText) + '（数值已同步）');
       return true;
     }
 
@@ -29392,112 +29414,12 @@ console.log(
         } else if (cur < e.n) {
           e.n = cur;
           e.t = str(rel.seq);
-          if (!e.src) e.src = 'observed';
         }
       });
       return fixed;
     }
 
-    /* 只在「严格模式」下才用：默认关闭，AI 说了算 */
-    function seqInWindow(s) {
-      var m = s.match(/序列\s*([0-9])/) || s.match(/序列\s*([一二三四五六七八九])/);
-      if (!m) return null;
-      return CN[m[1]] != null ? CN[m[1]] : parseInt(m[1], 10);
-    }
-
-    function evidenceOk(text, name, targetSeq) {
-      var src = str(text).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ');
-      if (!src) return false;
-      var target = Number(targetSeq);
-      if (!isFinite(target)) return false;
-      var rels = relsOf();
-      if (!Object.keys(rels).length) return false;
-
-      var sents = src.split(/[。！？!?\n；;]+/);
-      var prevNpc = null;
-
-      for (var i = 0; i < sents.length; i++) {
-        var s = sents[i];
-        if (!s) continue;
-
-        var refs = [];
-        Object.keys(rels).forEach(function (n) {
-          aliases(n).forEach(function (a) {
-            var p = 0;
-            while ((p = s.indexOf(a, p)) >= 0) { refs.push({ pos: p, len: a.length, kind: 'npc', name: n }); p += a.length; }
-          });
-        });
-        ['玩家', '主角', '我', '你'].forEach(function (w) {
-          var p = 0;
-          while ((p = s.indexOf(w, p)) >= 0) { refs.push({ pos: p, len: w.length, kind: 'player' }); p += w.length; }
-        });
-        ['他们', '她们', '自己', '他', '她', '它'].forEach(function (w) {
-          var p = 0;
-          while ((p = s.indexOf(w, p)) >= 0) { refs.push({ pos: p, len: w.length, kind: 'pronoun', word: w }); p += w.length; }
-        });
-        refs.sort(function (a, b) { return a.pos - b.pos; });
-
-        var verbRe = /(晋升|提升|突破|进阶|晋级|成为|达到|踏入|迈入|已至|已是)/g;
-        var vm;
-        while ((vm = verbRe.exec(s)) !== null) {
-          var vp = vm.index;
-          var win = s.slice(Math.max(0, vp - 14), Math.min(s.length, vp + 40));
-          if (seqInWindow(win) !== target) continue;
-
-          var best = null;
-          for (var r = 0; r < refs.length; r++) {
-            if (refs[r].pos + refs[r].len > vp) continue;
-            if (vp - (refs[r].pos + refs[r].len) > 60) continue;
-            if (!best || refs[r].pos > best.pos) best = refs[r];
-          }
-
-          var subj = null;
-          if (best) {
-            if (best.kind === 'npc') subj = best.name;
-            else if (best.kind === 'player') subj = null;
-            else if (best.kind === 'pronoun') {
-              if (best.word === '自己') {
-                for (var f = 0; f < refs.length; f++) {
-                  if (refs[f].kind === 'npc' && refs[f].pos < best.pos) { subj = refs[f].name; break; }
-                }
-              } else {
-                var npc = null;
-                for (var q = 0; q < refs.length; q++) {
-                  if (refs[q].kind === 'npc' && refs[q].pos + refs[q].len <= best.pos) {
-                    if (!npc || refs[q].pos > npc.pos) npc = refs[q];
-                  }
-                }
-                subj = npc ? npc.name : prevNpc;
-              }
-            }
-          }
-          if (!subj) {
-            for (var a2 = 0; a2 < refs.length; a2++) {
-              if (refs[a2].kind === 'npc' && refs[a2].pos >= vp && refs[a2].pos - vp <= 24) { subj = refs[a2].name; break; }
-            }
-          }
-
-          if (subj && relKey(subj) && relKey(subj) === relKey(name)) return true;
-        }
-
-        for (var z = refs.length - 1; z >= 0; z--) {
-          if (refs[z].kind === 'npc') { prevNpc = refs[z].name; break; }
-        }
-      }
-      return false;
-    }
-
-    function narrativeText(data) {
-      try {
-        if (!data) return '';
-        var n = data.narrative;
-        if (typeof n === 'string') return n;
-        if (n && typeof n === 'object') return [n.scene, n.result, n.world].filter(Boolean).join('\n');
-        return [data.text, data.content, data.scene].filter(function (x) { return typeof x === 'string'; }).join('\n');
-      } catch (e) { return ''; }
-    }
-
-    /* ---------------- 挂载 ---------------- */
+    /* ---------------- 挂载：applyAI ---------------- */
 
     seedLedger();
 
@@ -29506,32 +29428,44 @@ console.log(
 
       var wrappedApply = function (data, action) {
         var snap = [];
+        var declared = {};
+        var preSeqs = {};
+
+        try {
+          Object.keys(relsOf()).forEach(function (k) {
+            preSeqs[k] = str(relsOf()[k] && relsOf()[k].seq);
+          });
+        } catch (e) {}
+
         try {
           if (data && Array.isArray(data.npcUpdates)) {
             data.npcUpdates.forEach(function (u) {
-              if (u && u.name && u.seq != null) snap.push({ name: str(u.name), seq: u.seq, path: u.path });
-            });
-          }
-          if (data && data.stateChanges && Array.isArray(data.stateChanges.addRelation)) {
-            data.stateChanges.addRelation.forEach(function (u) {
-              if (u && u.name && u.seq != null) snap.push({ name: str(u.name), seq: u.seq, path: u.path });
-            });
-          }
-          if (data && Array.isArray(data.npcProfiles)) {
-            data.npcProfiles.forEach(function (u) {
-              if (u && u.name && u.seq != null) snap.push({ name: str(u.name), seq: u.seq, path: u.path });
-            });
-          } else if (data && data.npcProfiles && typeof data.npcProfiles === 'object') {
-            Object.keys(data.npcProfiles).forEach(function (n) {
-              var u = data.npcProfiles[n];
-              if (u && u.seq != null) snap.push({ name: str(n), seq: u.seq, path: u.path });
+              if (!u || !u.name || u.seq == null) return;
+              snap.push({ name: str(u.name), seq: u.seq, path: u.path });
+              var k = relKey(u.name);
+              if (k) declared[k] = true;
             });
           }
         } catch (e) {}
 
         var after = function () {
           try {
-            var text = window.__V86_STRICT__ === true ? narrativeText(data) : '';
+            /* 1. 本轮只有 npcUpdates 允许改序列，其它来源（档案刷新、addRelation 覆盖）一律退回 */
+            Object.keys(relsOf()).forEach(function (k) {
+              var rel = relsOf()[k];
+              if (!rel) return;
+              if (!Object.prototype.hasOwnProperty.call(preSeqs, k)) return;
+              if (str(rel.seq) === preSeqs[k]) return;
+              if (declared[k]) return;
+              var wasSeq = str(rel.seq);
+              rel.seq = preSeqs[k];
+              syncMax(rel);
+              V.reverted.push({ name: k, from: wasSeq, to: preSeqs[k], at: new Date().toISOString() });
+              while (V.reverted.length > 24) V.reverted.shift();
+              console.warn('[V86] 已退回非本轮来源的序列改动：' + k + ' → ' + preSeqs[k]);
+            });
+
+            /* 2. 落账 AI 本轮明确报的晋升 */
             var appliedCount = 0;
             snap.forEach(function (x) {
               var key = relKey(x.name);
@@ -29539,29 +29473,55 @@ console.log(
               var cur = seqNum(state.relations[key].seq);
               var want = seqNum(x.seq);
               if (want == null) return;
-              // 当前读不出序列（空/凡俗/未知）时，视为可以写入，不再跳过
               if (cur != null && want >= cur) return;
-              if (window.__V86_STRICT__ === true && !evidenceOk(text, key, want)) return;
-              if (lock(key, x.seq, 'ai-npcUpdates')) {
-                if (x.path) state.relations[key].path = str(x.path);
+              if (lock(key, x.seq, 'npcUpdates')) {
+                if (x.path) {
+                  state.relations[key].path = str(x.path);
+                  applyStats(state.relations[key]);
+                }
                 appliedCount++;
               }
             });
 
-            // 留一份最近一次的原始数据，方便出问题时查（不写进存档，界面上也没有）
+            /* 3. npcUpdates 里报的「降级」也不接受，退回原值 */
+            Object.keys(declared).forEach(function (k) {
+              var rel = state.relations[k];
+              if (!rel) return;
+              var before = seqNum(preSeqs[k]);
+              var now = seqNum(rel.seq);
+              if (before == null || now == null) return;
+              if (now > before) {
+                rel.seq = preSeqs[k];
+                syncMax(rel);
+                V.reverted.push({ name: k, from: String(now), to: preSeqs[k], at: new Date().toISOString() });
+                console.warn('[V86] 拒绝把 ' + k + ' 降回更弱的序列，已恢复 ' + preSeqs[k]);
+              }
+            });
+
+            /* 4. 本轮被碰过的角色，数值和序列对齐（只修对不上的，不碰受伤状态） */
+            Object.keys(declared).forEach(function (k) {
+              var rel = state.relations[k];
+              if (!rel) return;
+              try {
+                var m = window.calcMaxStats ? window.calcMaxStats(rel.path || '凡俗', rel.seq || '凡俗') : null;
+                if (m && m.maxHp != null && Number(rel.maxHp) !== Number(m.maxHp)) applyStats(rel);
+              } catch (e) {}
+            });
+
             try {
               var rels = {};
-              Object.keys((window.state && state.relations) || {}).forEach(function (k) { rels[k] = state.relations[k].seq; });
+              Object.keys(relsOf()).forEach(function (k) { rels[k] = relsOf()[k].seq; });
               window.__v86Last = {
                 at: new Date().toISOString(),
                 aiSaid: snap,
                 appliedCount: appliedCount,
+                reverted: V.reverted.slice(-6),
                 relations: rels
               };
             } catch (e2) {}
 
             enforceRatchet();
-            // 界面是在这之前渲染的，写完要再刷一次，面板才会立刻变
+
             if (appliedCount > 0 && typeof window.renderUI === 'function') {
               try { window.renderUI(); } catch (e) {}
             }
@@ -29578,6 +29538,8 @@ console.log(
       wrappedApply.__v86 = true;
       window.applyAI = wrappedApply;
     }
+
+    /* ---------------- 挂载：renderUI / 存档 ---------------- */
 
     if (typeof window.renderUI === 'function' && !window.renderUI.__v86) {
       var innerRender = window.renderUI;
@@ -29643,7 +29605,8 @@ console.log(
       window.resetWorldState = wrappedReset;
     }
 
-    /* 让 AI 自己把晋升写进结构化字段（前端只负责转达，不猜） */
+    /* ---------------- 提示词：让 AI 自己把晋升写进 npcUpdates ---------------- */
+
     if (typeof window.callAPI === 'function' && !window.callAPI.__v86Prompt) {
       var innerCall = window.callAPI;
 
@@ -29666,55 +29629,43 @@ console.log(
       window.callAPI = wrappedCall;
     }
 
-    /* 出问题时用：把 AI 最后一次报了什么、现在面板是什么，打成一串文字 */
-    window.v86Dump = function () {
-      try {
-        var out = { last: window.__v86Last || null, ledger: (window.state && state._v86Seq) || {}, relations: {} };
-        Object.keys((window.state && state.relations) || {}).forEach(function (k) {
-          out.relations[k] = { seq: state.relations[k].seq, path: state.relations[k].path };
-        });
-        return JSON.stringify(out);
-      } catch (e) { return '{}'; }
-    };
+    /* ---------------- 手动纠正 ---------------- */
+
+    function doFix(name, seqText, silent) {
+      var key = relKey(name);
+      if (!key) { if (!silent) toast('找不到这个角色：' + name); return false; }
+      var n = seqNum(seqText);
+      if (n == null) { if (!silent) toast('认不出这个序列写法，试试「序列5·木偶」'); return false; }
+
+      var rel = state.relations[key];
+      rel.seq = str(seqText);
+      applyStats(rel);
+
+      var L = ledger();
+      L[key] = { n: n, t: str(seqText), src: 'manual', at: state.time || '' };
+
+      try { if (typeof renderUI === 'function') renderUI(); } catch (e) {}
+      if (!silent) { try { toast('已修正 ' + key + ' → ' + seqText + '（数值已同步）'); } catch (e) {} }
+      console.log('[V86] 手动修正 ' + key + ' → ' + seqText);
+      return true;
+    }
 
     window.v86SetNpcSeq = function (name, seqText) {
-      try {
-        var key = relKey(name);
-        if (!key) { console.warn('[V86] 找不到这个 NPC：' + name); return false; }
-        var n = seqNum(seqText);
-        if (n == null) { console.warn('[V86] 认不出这个序列写法：' + seqText); return false; }
-        var L = ledger();
-        state.relations[key].seq = str(seqText);
-        L[key] = { n: n, t: str(seqText), src: 'manual', at: state.time || '' };
-        if (typeof renderUI === 'function') renderUI();
-        console.log('[V86] 已手动校正 ' + key + ' → ' + seqText);
-        return true;
-      } catch (e) { console.warn('[V86] 校正失败', e); return false; }
-    };
-
-    window.v86SeqAudit = function () {
-      var rows = [];
-      try {
-        var L = ledger(), rels = relsOf();
-        Object.keys(rels).forEach(function (k) {
-          rows.push({ npc: k, 当前: rels[k].seq, 底线: L[k] && L[k].t, 来源: L[k] && L[k].src, 时间: L[k] && L[k].at });
-        });
-        console.log('[V86 NPC 序列盘点]', rows);
-      } catch (e) { console.warn('[V86] 盘点失败', e); }
-      return rows;
+      try { return doFix(name, seqText, false); }
+      catch (e) { console.warn('[V86] 校正失败', e); return false; }
     };
 
     V._test = {
       seqNum: seqNum,
       aliases: aliases,
-      evidenceOk: evidenceOk,
       lock: lock,
       enforceRatchet: enforceRatchet,
       seedLedger: seedLedger,
-      relKey: relKey
+      relKey: relKey,
+      applyStats: applyStats
     };
 
-    console.log('%c[V86] NPC 序列：AI 判定后直接写入面板；只升不降；严格模式默认关闭。不动存档结构。',
+    console.log('%c[V86] NPC 序列：只认本轮 npcUpdates；序列变化同步数值。',
       'color:#7c3aed;font-weight:700');
   } catch (e) {
     console.warn('[V86] 安装失败（不影响原游戏）', e);
