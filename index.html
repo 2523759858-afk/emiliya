@@ -29679,13 +29679,21 @@ console.log(
     }
 
     function parseSeqCommand(text) {
-      if (!text || text.length > 60) return null;
+      if (!text || text.length > 80) return null;
       if (!/(序列|位阶|位格)/.test(text)) return null;
-      if (!/修正|校正|纠正|更正|改正|改一下|改成|改为|改回|调整|设定|不对|错误|错了|应为|应该是/.test(text)) return null;
-      var m = text.match(/序列\s*([0-9]|[一二三四五六七八九])(?:\s*[·・]\s*([^\s，。,.!！?？]{1,8}))?/);
-      if (!m) return null;
+      if (!/修正|校正|纠正|更正|改正|改一下|改成|改为|改回|调整|设定|不对|错误|错了|应为|应该是|恢复/.test(text)) return null;
+
+      /* 「序列5」「序列为5」「序列改成5」「改成序列5」都认 */
+      var m = text.match(/(?:序列|位阶|位格)\s*(?:为|是|改成|改为|调整到?|应为|应该是)?\s*([0-9]|[一二三四五六七八九])(?:\s*[·・]\s*([^\s，。,.!！?？]{1,8}))?/);
+      if (!m) {
+        m = text.match(/(?:改成|改为|改回|修正为|校正为|调整为|应为|应该是|恢复为)\s*([0-9]|[一二三四五六七八九])(?:\s*[·・]\s*([^\s，。,.!！?？]{1,8}))?/);
+      }
+
+      /* 只要带「序列」和修正字眼，就由这里接管，绝不能再漏给年龄校正 */
+      if (!m) return { n: null, seq: null };
+
       var n = CN[m[1]] != null ? CN[m[1]] : parseInt(m[1], 10);
-      if (!(n >= 0 && n <= 9)) return null;
+      if (!(n >= 0 && n <= 9)) return { n: null, seq: null };
       return { n: n, seq: '序列' + n + (m[2] ? '·' + m[2] : '') };
     }
 
@@ -29702,6 +29710,11 @@ console.log(
             if (cmd) {
               var keys = findNpcKeysInText(text);
               if (input) input.value = '';
+
+              if (!cmd.seq) {
+                try { addEntry('序列校正', 'system', '没看懂这条序列指令。请写成“修正奥黛丽序列为序列5”；只写数字会被当成年龄，所以这里拦下了。'); } catch (e) {}
+                return;
+              }
 
               if (keys.length === 1) {
                 var before = str(window.state.relations[keys[0]] && window.state.relations[keys[0]].seq);
