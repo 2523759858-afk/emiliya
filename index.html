@@ -29655,6 +29655,87 @@ console.log(
       catch (e) { console.warn('[V86] 校正失败', e); return false; }
     };
 
+    /* ---------------- 输入框指令：修正XX序列为序列5 ---------------- */
+
+    function findNpcKeysInText(text) {
+      var rels = relsOf();
+      var hits = [];
+      Object.keys(rels).forEach(function (k) {
+        var best = null;
+        aliases(k).forEach(function (a) {
+          var p = text.indexOf(a);
+          if (p >= 0 && (!best || a.length > best.len)) best = { pos: p, len: a.length };
+        });
+        if (best) hits.push({ key: k, pos: best.pos, len: best.len });
+      });
+      hits = hits.filter(function (h) {
+        return !hits.some(function (o) {
+          return o !== h && o.pos <= h.pos && (o.pos + o.len) >= (h.pos + h.len) && o.len > h.len;
+        });
+      });
+      var keys = [];
+      hits.forEach(function (h) { if (keys.indexOf(h.key) < 0) keys.push(h.key); });
+      return keys;
+    }
+
+    function parseSeqCommand(text) {
+      if (!text || text.length > 60) return null;
+      if (!/(序列|位阶|位格)/.test(text)) return null;
+      if (!/修正|校正|纠正|更正|改正|改一下|改成|改为|改回|调整|设定|不对|错误|错了|应为|应该是/.test(text)) return null;
+      var m = text.match(/序列\s*([0-9]|[一二三四五六七八九])(?:\s*[·・]\s*([^\s，。,.!！?？]{1,8}))?/);
+      if (!m) return null;
+      var n = CN[m[1]] != null ? CN[m[1]] : parseInt(m[1], 10);
+      if (!(n >= 0 && n <= 9)) return null;
+      return { n: n, seq: '序列' + n + (m[2] ? '·' + m[2] : '') };
+    }
+
+    if (typeof window.execute === 'function' && !window.execute.__v86SeqCommand) {
+      var innerExecute = window.execute;
+
+      var wrappedExecute = function () {
+        try {
+          if (typeof running === 'undefined' || !running) {
+            var input = document.getElementById('actionInput');
+            var text = String((input && input.value) || '').trim();
+            var cmd = parseSeqCommand(text);
+
+            if (cmd) {
+              var keys = findNpcKeysInText(text);
+              if (input) input.value = '';
+
+              if (keys.length === 1) {
+                var before = str(window.state.relations[keys[0]] && window.state.relations[keys[0]].seq);
+                if (doFix(keys[0], cmd.seq, true)) {
+                  try { addEntry('序列校正', 'system', '已按对话指令修正【' + keys[0] + '】的序列：' + before + ' → ' + cmd.seq); } catch (e) {}
+                  try { toast('已修正 ' + keys[0] + ' → ' + cmd.seq + '（数值已同步）'); } catch (e) {}
+                  try {
+                    if (typeof buildSave === 'function' && typeof getSaves === 'function' && typeof setSaves === 'function') {
+                      var saves = getSaves();
+                      saves['自动封存存档'] = buildSave();
+                      setSaves(saves);
+                    }
+                  } catch (e) {}
+                }
+                return;
+              }
+
+              if (keys.length > 1) {
+                try { addEntry('序列校正', 'system', '这条指令匹配到多个角色：' + keys.join('、') + '。请用更完整的姓名重新输入。'); } catch (e) {}
+                return;
+              }
+
+              try { addEntry('序列校正', 'system', '人物档案里没有找到这条指令提到的角色。请确认他已经在档案里，再用“修正奥黛丽序列为序列5”这样的句式。'); } catch (e) {}
+              return;
+            }
+          }
+        } catch (e) { console.warn('[V86] 序列指令处理失败', e); }
+
+        return innerExecute.apply(this, arguments);
+      };
+      wrappedExecute.__v86SeqCommand = true;
+      window.execute = wrappedExecute;
+    }
+
     V._test = {
       seqNum: seqNum,
       aliases: aliases,
