@@ -29358,6 +29358,46 @@ console.log(
       } catch (e) {}
     }
 
+    /*
+     * 游戏里真正说了算的是 V58 的「事实账本」(state._v58NpcFacts)。
+     * 它每次渲染都会 restoreFacts / normalize，把 relations 里的序列按账本重新写一遍。
+     * 所以只改 relations 不够——必须把账本一起改，否则下一次渲染就被写回去。
+     */
+    function syncFact(key, rel, seqText) {
+      try {
+        var n = seqNum(seqText);
+        if (n == null) return;
+        var s = window.state;
+        if (!s) return;
+
+        var c = str(rel && rel._v58Name) || str(key);
+
+        if (!s._v58NpcFacts || typeof s._v58NpcFacts !== 'object') s._v58NpcFacts = {};
+        var f = s._v58NpcFacts[c];
+        if (!f || typeof f !== 'object') f = s._v58NpcFacts[c] = {};
+        f.seqNum = n;
+        f.seqText = str(seqText);
+        if (rel && rel.path) f.path = str(rel.path);
+        f.seqSource = 'v86';
+
+        if (rel) rel._v58Name = c;
+
+        var sf = s._v67SafeFacts;
+        if (sf && typeof sf === 'object') {
+          var k2 = sf[c] ? c : null;
+          if (!k2) {
+            var names = Object.keys(sf);
+            for (var i = 0; i < names.length; i++) { if (names[i] === key) { k2 = names[i]; break; } }
+          }
+          if (k2 && sf[k2] && sf[k2].value && typeof sf[k2].value === 'object') {
+            sf[k2].value.seqNum = n;
+            sf[k2].value.seqText = str(seqText);
+            if (rel && rel.path) sf[k2].value.path = str(rel.path);
+          }
+        }
+      } catch (e) {}
+    }
+
     function lock(name, seqText, source) {
       var s = window.state;
       if (!s || !s.relations) return false;
@@ -29376,6 +29416,7 @@ console.log(
       }
 
       rel.seq = str(seqText);
+      syncFact(key, rel, seqText);
       applyStats(rel);
 
       var L = ledger();
@@ -29407,6 +29448,7 @@ console.log(
         if (cur > e.n) {
           var was = str(rel.seq);
           rel.seq = e.t;
+          syncFact(k, rel, e.t);
           fixed++;
           V.blocked.push({ name: k, from: was, to: e.t, at: s.time || '' });
           while (V.blocked.length > 24) V.blocked.shift();
@@ -29639,12 +29681,20 @@ console.log(
 
       var rel = state.relations[key];
       rel.seq = str(seqText);
+      syncFact(key, rel, seqText);
       applyStats(rel);
 
       var L = ledger();
       L[key] = { n: n, t: str(seqText), src: 'manual', at: state.time || '' };
 
       try { if (typeof renderUI === 'function') renderUI(); } catch (e) {}
+      try { if (typeof window.renderRel === 'function') window.renderRel(); } catch (e) {}
+      try {
+        var cm = document.getElementById('charModal');
+        if (cm && cm.classList && cm.classList.contains('show') && typeof window.openCharModal === 'function') {
+          window.openCharModal(key);
+        }
+      } catch (e) {}
       if (!silent) { try { toast('已修正 ' + key + ' → ' + seqText + '（数值已同步）'); } catch (e) {} }
       console.log('[V86] 手动修正 ' + key + ' → ' + seqText);
       return true;
