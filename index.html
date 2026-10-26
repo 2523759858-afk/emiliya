@@ -29660,7 +29660,7 @@ console.log(
 
     /* ---------------- 提示词：让 AI 自己把晋升写进 npcUpdates ---------------- */
 
-    if (typeof window.callAPI === 'function' && !window.callAPI.__v86Prompt) {
+    if (typeof window.callAPI === 'function' && !window.callAPI.__v86Prompt && window.__V86_PROMPT__ === true) {
       var innerCall = window.callAPI;
 
       var wrappedCall = function (msgs) {
@@ -30144,7 +30144,7 @@ console.log(
       return lines.join('\n');
     })();
 
-    if (typeof window.callAPI === 'function' && !window.callAPI.__v88Prompt) {
+    if (typeof window.callAPI === 'function' && !window.callAPI.__v88Prompt && window.__V88_PROMPT__ === true) {
       var innerCall = window.callAPI;
       var wrappedCall = function (msgs) {
         try {
@@ -30184,7 +30184,7 @@ console.log(
 
     V._test = { sanitize: sanitize, seqNum: seqNum, seqNameOf: seqNameOf, normPath: normPath };
 
-    console.log('%c[V88] 输出校验已挂载：非法途径/序列名/跳级/跨途径会被拦截；22条总表已注入提示词。',
+    console.log('%c[V88] 输出校验已挂载：非法途径/序列名/跳级/跨途径会被拦截（总表注入默认关闭）。',
       'color:#0f766e;font-weight:700');
   } catch (e) {
     console.warn('[V88] 安装失败（不影响原游戏）', e);
