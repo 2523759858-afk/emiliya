@@ -30191,6 +30191,102 @@ console.log(
   }
 })();
 /* ▲▲▲ V88 完 ▲▲▲ */
+/* ▼▼▼ V89 · 源质加成常驻（只动最大值，不碰提示词/记忆/存档结构） ▼▼▼ */
+(function () {
+  'use strict';
+  try {
+    if (window.__V89_STAT_FLOOR__) return;
+    var V = window.__V89_STAT_FLOOR__ = { version: 1, last: null };
+
+    function num(v, d) { var n = Number(v); return isFinite(n) ? n : d; }
+
+    function multOf() {
+      var s = window.state || {};
+      var m = { hp: 1, mp: 1, sp: 1, san: 1 };
+      if (s.sourceResonance && Object.keys(s.sourceResonance).length) { m.mp *= 1.5; m.sp *= 1.5; m.san *= 1.2; }
+      if (s.sourceHeld && Object.keys(s.sourceHeld).length) { m.hp *= 1.3; m.mp *= 2; m.sp *= 1.8; m.san *= 1.3; }
+      if (s.ascended && Object.keys(s.ascended).length) { m.hp *= 10; m.mp *= 10; m.sp *= 10; m.san *= 10; }
+      return m;
+    }
+
+    function floorUp() {
+      var s = window.state;
+      if (!s || typeof window.calcMaxStats !== 'function') return false;
+      if (window.__V89_DISABLED__ === true) return false;
+
+      var base = window.calcMaxStats(s.path, s.seq) || {};
+      var m = multOf();
+      var want = {
+        hp: Math.round(num(base.maxHp, 100) * m.hp),
+        mp: Math.round(num(base.maxMp, 10) * m.mp),
+        sp: Math.round(num(base.maxSp, 100) * m.sp),
+        san: Math.round(num(base.maxSanity, 100) * m.san)
+      };
+
+      var changed = false;
+      if (num(s.maxHp, 0) < want.hp) { s.maxHp = want.hp; changed = true; }
+      if (num(s.maxMp, 0) < want.mp) { s.maxMp = want.mp; changed = true; }
+      if (num(s.maxSp, 0) < want.sp) { s.maxSp = want.sp; changed = true; }
+      if (num(s.maxSanity, 0) < want.san) { s.maxSanity = want.san; changed = true; }
+
+      if (changed) {
+        if (num(s.hp, 0) > s.maxHp) s.hp = s.maxHp;
+        if (num(s.mp, 0) > s.maxMp) s.mp = s.maxMp;
+        if (num(s.sp, 0) > s.maxSp) s.sp = s.maxSp;
+        if (num(s.sanity, 0) > s.maxSanity) s.sanity = s.maxSanity;
+        try { if (typeof window.renderUI === 'function') window.renderUI(); } catch (e) {}
+      }
+
+      V.last = { at: new Date().toISOString(), base: base, mult: m, want: want, changed: changed };
+      return changed;
+    }
+
+    function strip(data) {
+      try {
+        var sc = data && data.stateChanges;
+        if (!sc) return;
+        delete sc.maxHp; delete sc.maxMp; delete sc.maxSp; delete sc.maxSanity;
+      } catch (e) {}
+    }
+
+    if (typeof window.applyAI === 'function' && !window.applyAI.__v89) {
+      var innerApply = window.applyAI;
+      var wrapped = function (data) {
+        try { strip(data); } catch (e) {}
+        var res = innerApply.apply(this, arguments);
+        try { floorUp(); } catch (e) {}
+        return res;
+      };
+      wrapped.__v89 = true;
+      window.applyAI = wrapped;
+    }
+
+    if (typeof window.applySave === 'function' && !window.applySave.__v89) {
+      var innerSave = window.applySave;
+      var wrappedSave = function () {
+        var res = innerSave.apply(this, arguments);
+        try { floorUp(); } catch (e) {}
+        try { setTimeout(floorUp, 300); } catch (e) {}
+        return res;
+      };
+      wrappedSave.__v89 = true;
+      window.applySave = wrappedSave;
+    }
+
+    try { setTimeout(floorUp, 500); } catch (e) {}
+
+    window.v89Check = function () {
+      try { floorUp(); console.log('[V89]', V.last); return V.last; }
+      catch (e) { return null; }
+    };
+
+    V._test = { multOf: multOf, floorUp: floorUp, strip: strip };
+
+    console.log('%c[V89] 源质加成已常驻：每轮/读档后自动补到「基础×倍率」，不会被 AI 覆盖。',
+      'color:#0f766e;font-weight:700');
+  } catch (e) { console.warn('[V89] 安装失败（不影响原游戏）', e); }
+})();
+/* ▲▲▲ V89 完 ▲▲▲ */
 </script>
 </body>
 </html>
