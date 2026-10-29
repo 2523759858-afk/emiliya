@@ -30287,6 +30287,260 @@ console.log(
   } catch (e) { console.warn('[V89] 安装失败（不影响原游戏）', e); }
 })();
 /* ▲▲▲ V89 完 ▲▲▲ */
+/* ▼▼▼ V90 · 记忆叠加层：人物志 + NPC 记忆（只追加，不改原输出） ▼▼▼ */
+(function () {
+  'use strict';
+  try {
+    if (window.__V90_MEM_OVERLAY__) return;
+    var V = window.__V90_MEM_OVERLAY__ = { version: 1, last: null, cap: 3000 };
+
+    function s(v) { return v == null ? '' : String(v); }
+    function cut(v, n) { v = s(v); return v.length > n ? (v.slice(0, n) + '…') : v; }
+
+    /* 名字别名：全名 + “·”前后的部分，避免“克莱恩”匹配不到“克莱恩·莫雷蒂” */
+    function aliasesOf(name) {
+      var out = [name];
+      var parts = String(name).split('·');
+      if (parts.length > 1) {
+        parts.forEach(function (p) {
+          p = String(p).trim();
+          if (p.length >= 2 && out.indexOf(p) < 0) out.push(p);
+        });
+      }
+      return out;
+    }
+    function mentionedIn(text, name) {
+      if (!text) return false;
+      var as = aliasesOf(name);
+      for (var i = 0; i < as.length; i++) { if (String(text).indexOf(as[i]) >= 0) return true; }
+      return false;
+    }
+
+    /* 从原输出里提取已出现的回合号，用来去重 */
+    function turnsIn(text) {
+      var set = {};
+      var m;
+      var re = /R(\d+)/g;
+      while ((m = re.exec(text))) set[m[1]] = 1;
+      re = /回合\s*(\d+)/g;
+      while ((m = re.exec(text))) set[m[1]] = 1;
+      return set;
+    }
+
+    function evText(v) {
+      if (v == null) return '';
+      if (typeof v === 'string') return v;
+      if (typeof v === 'object') return s(v.text || v.event || v.desc || v.content || '');
+      return s(v);
+    }
+    function itemText(v) {
+      if (v == null) return '';
+      if (typeof v === 'string') return v;
+      if (typeof v === 'object') return s(v.name || v.title || '');
+      return s(v);
+    }
+
+    function evLine(m) {
+      var ev = (m.events && m.events.length) ? evText(m.events[0]) : s(m.rawText);
+      return 'R' + (m.turn != null ? m.turn : '?') + ' ' + cut(ev, 36);
+    }
+
+    function eventsFor(name, skip, base, limit) {
+      var out = [];
+      var arr = (window.state && window.state.memoryEntries) || [];
+      for (var i = arr.length - 1; i >= 0 && out.length < limit; i--) {
+        var m = arr[i];
+        if (!m) continue;
+        if (m.turn != null && skip[String(m.turn)]) continue;
+        var hit = false;
+        if (m.npcs) {
+          for (var q = 0; q < m.npcs.length; q++) {
+            if (mentionedIn(m.npcs[q], name) || mentionedIn(name, m.npcs[q])) { hit = true; break; }
+          }
+        }
+        if (!hit && mentionedIn(s(m.rawText), name)) hit = true;
+        if (!hit) continue;
+        var line = evLine(m);
+        if (base && base.indexOf(cut(evText((m.events && m.events[0]) || m.rawText), 18)) >= 0) continue;
+        out.push(line);
+      }
+      return out;
+    }
+
+    function buildVocab() {
+      var st = window.state; if (!st) return [];
+      var seen = {};
+      function add(v) { v = s(v).trim(); if (v.length >= 2) seen[v] = 1; }
+      Object.keys(st.relations || {}).forEach(function (n) { add(n); aliasesOf(n).forEach(add); });
+      (st.bag || []).forEach(function (it) { add(it && it.name); });
+      if (st.equip) Object.keys(st.equip).forEach(function (k) { var it = st.equip[k]; add(it && it.name); });
+      Object.keys(st.recipes || {}).forEach(function (k) { add(k); });
+      (st.houses || []).forEach(function (h) { add(h && (h.name || h.title)); });
+      return Object.keys(seen);
+    }
+
+    function matchedTerms(action) {
+      var a = s(action); if (a.length < 2) return [];
+      var vocab = buildVocab(), out = [];
+      for (var i = 0; i < vocab.length; i++) {
+        if (a.indexOf(vocab[i]) >= 0) out.push(vocab[i]);
+      }
+      out.sort(function (x, y) { return y.length - x.length; });
+      return out.slice(0, 3);
+    }
+
+    function eventLine(m, n) {
+      var ev = evText((m.events && m.events[0]) || m.rawText);
+      return 'R' + m.turn + (m.time ? ' · ' + cut(m.time, 12) : '') + (m.location ? ' · ' + cut(m.location, 12) : '') + ' · ' + cut(ev, n || 40);
+    }
+
+    function relatedEvents(term, skip, base, limit) {
+      var out = [];
+      var arr = (window.state && window.state.memoryEntries) || [];
+      for (var i = arr.length - 1; i >= 0 && out.length < limit; i--) {
+        var m = arr[i]; if (!m || m.turn == null) continue;
+        if (skip[String(m.turn)]) continue;
+        var hay = (m.events || []).map(evText).join('；') + ' ' + (m.items || []).map(itemText).join('、') + ' ' + s(m.rawText);
+        if (hay.indexOf(term) < 0) continue;
+        var ev = evText((m.events && m.events[0]) || m.rawText);
+        if (base && ev && base.indexOf(cut(ev, 18)) >= 0) continue;
+        out.push(eventLine(m, 40));
+      }
+      return out;
+    }
+
+    function latestEventFor(name, skip, base) {
+      var arr = (window.state && window.state.memoryEntries) || [];
+      for (var i = arr.length - 1; i >= 0; i--) {
+        var m = arr[i]; if (!m || m.turn == null) continue;
+        if (skip[String(m.turn)]) continue;
+        var hit = false;
+        if (m.npcs) {
+          for (var q = 0; q < m.npcs.length; q++) {
+            if (mentionedIn(m.npcs[q], name) || mentionedIn(name, m.npcs[q])) { hit = true; break; }
+          }
+        }
+        if (!hit && mentionedIn(s(m.rawText), name)) hit = true;
+        if (!hit) continue;
+        return eventLine(m, 36);
+      }
+      return '';
+    }
+
+    function buildExtras(action, base) {
+      var st = window.state;
+      if (!st || !st.relations) return '';
+      var skip = turnsIn(base);
+      var a = s(action);
+      var rels = st.relations;
+      var added = {};
+
+      function mark(list) {
+        (list || []).forEach(function (x) {
+          var m = String(x).match(/R(\d+)/);
+          if (m) added[m[1]] = 1;
+        });
+      }
+
+      var names = Object.keys(rels).filter(function (n) {
+        var r = rels[n];
+        if (!r) return false;
+        return r.status === '在场' || mentionedIn(a, n);
+      }).slice(0, 5);
+
+      var lines = [];
+
+      names.forEach(function (n) {
+        if (base && base.indexOf('【' + n + '】') >= 0) return;
+        var r = rels[n];
+        var bits = [];
+        if (r.path) bits.push(s(r.path));
+        if (r.seq) bits.push(s(r.seq));
+        if (r.fav) bits.push('好感' + s(r.fav) + (r.favVal != null ? '(' + r.favVal + ')' : ''));
+        if (r.location) bits.push('在' + cut(r.location, 16));
+        if (r.identity) bits.push(cut(r.identity, 20));
+        lines.push('【人物志·' + n + '】' + bits.join(' · '));
+
+        var evs = [];
+        try {
+          var pool = [];
+          if (Array.isArray(r._coreMemory)) pool = pool.concat(r._coreMemory);
+          if (Array.isArray(r.memory)) pool = pool.concat(r.memory);
+          evs = pool.slice(-3).map(function (m) {
+            return 'R' + (m && m.turn != null ? m.turn : '?') + ' ' + cut((m && m.event) || '', 40);
+          }).filter(function (x) { return x.length > 3; });
+        } catch (e) {}
+        if (!evs.length) evs = eventsFor(n, skip, base, 3);
+        if (evs.length) {
+          lines.push('  ' + evs.join('；'));
+          mark(evs);
+        }
+
+        var last = latestEventFor(n, skip, base);
+        var lt = last ? String(last).match(/^R(\d+)/) : null;
+        if (last && lt && !added[lt[1]]) {
+          lines.push('  最近记录：' + last);
+          added[lt[1]] = 1;
+        }
+      });
+
+      var relLines = [];
+      matchedTerms(a).forEach(function (t) {
+        relatedEvents(t, skip, base, 2).forEach(function (l) {
+          var m = String(l).match(/^R(\d+)/);
+          if (m && added[m[1]]) return;
+          if (relLines.indexOf(l) >= 0) return;
+          relLines.push(l);
+          if (m) added[m[1]] = 1;
+        });
+      });
+      if (relLines.length) {
+        lines.push('── 与本次行动相关的旧事 ──');
+        relLines.slice(0, 4).forEach(function (l) { lines.push('· ' + l); });
+      }
+
+      if (!lines.length) return '';
+      var text = '══【补充记忆】══\n' + lines.join('\n');
+      if (text.length > V.cap) {
+        var head = text.slice(0, V.cap);
+        var cutAt = head.lastIndexOf('\n');
+        text = cutAt > 0 ? head.slice(0, cutAt) : head;
+      }
+      return text;
+    }
+    var inner = window.recallMemories;
+    if (typeof inner !== 'function') { console.warn('[V90] 未找到 recallMemories，未挂载'); return; }
+
+    window.recallMemories = function (action) {
+      var base = '';
+      try { base = inner.apply(this, arguments) || ''; } catch (e) { return ''; }
+
+      if (window.__V90_DISABLED__ === true) return base;
+
+      try {
+        var extra = buildExtras(action, base);
+        V.last = { at: new Date().toISOString(), baseLen: base.length, extraLen: extra.length, action: cut(action, 30) };
+        if (!extra) return base;
+        return base ? (base + '\n\n' + extra) : extra;
+      } catch (e) {
+        console.warn('[V90] 叠加失败，返回原输出', e);
+        return base;
+      }
+    };
+
+    window.v90Check = function () {
+      try { console.log('[V90]', V.last); return V.last; } catch (e) { return null; }
+    };
+
+    V._test = { buildExtras: buildExtras, turnsIn: turnsIn, eventsFor: eventsFor };
+
+    console.log('%c[V90] 记忆叠加层已挂载：人物志 + NPC记忆 + 关键词回忆，只追加、软上限3000、不写正文。',
+      'color:#0f766e;font-weight:700');
+  } catch (e) {
+    console.warn('[V90] 安装失败（不影响原游戏）', e);
+  }
+})();
+/* ▲▲▲ V90 完 ▲▲▲ */
 </script>
 </body>
 </html>
