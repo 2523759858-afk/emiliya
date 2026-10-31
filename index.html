@@ -30459,6 +30459,7 @@ console.log(
         if (r.fav) bits.push('好感' + s(r.fav) + (r.favVal != null ? '(' + r.favVal + ')' : ''));
         if (r.location) bits.push('在' + cut(r.location, 16));
         if (r.identity) bits.push(cut(r.identity, 20));
+        if (!bits.length) return;   /* 没有任何已知信息，就不写这行，避免空壳 */
         lines.push('【人物志·' + n + '】' + bits.join(' · '));
 
         var evs = [];
@@ -30541,6 +30542,78 @@ console.log(
   }
 })();
 /* ▲▲▲ V90 完 ▲▲▲ */
+/* ▼▼▼ V91 · 摘要请求退避（只在内存里记状态，不写存档） ▼▼▼ */
+(function () {
+  'use strict';
+  try {
+    if (window.__V91_SUMMARY_BACKOFF__) return;
+
+    var fails = 0;
+    var blockUntil = 0;
+    var skipped = 0;
+    var last = null;
+
+    /* 只认摘要类请求的固定句式，避免误伤正文 */
+    var SUM_RE = /(请压缩成|合并成)\s*\d+\s*字以内/;
+
+    function isSummary(msgs) {
+      try {
+        for (var i = 0; i < msgs.length; i++) {
+          var m = msgs[i];
+          if (m && m.content && SUM_RE.test(String(m.content))) return true;
+        }
+      } catch (e) {}
+      return false;
+    }
+
+    var inner = window.callAPI;
+    if (typeof inner !== 'function') { console.warn('[V91] 没有 callAPI，未挂载'); return; }
+
+    window.callAPI = function (msgs, c) {
+      var turn = (window.state && window.state._turnCount) || 0;
+      var sum = false;
+      try { sum = isSummary(msgs || []); } catch (e) {}
+
+      if (sum && turn < blockUntil) {
+        skipped++;
+        last = { at: new Date().toISOString(), action: 'skip', turn: turn, blockUntil: blockUntil, skipped: skipped };
+        return Promise.reject(new Error('摘要请求退避中'));
+      }
+
+      var p;
+      try { p = inner.apply(this, arguments); }
+      catch (e) { p = Promise.reject(e); }
+
+      if (!sum) return p;
+
+      return Promise.resolve(p).then(function (v) {
+        fails = 0;
+        last = { at: new Date().toISOString(), action: 'ok', turn: turn };
+        return v;
+      }, function (err) {
+        fails++;
+        var wait = Math.min(30, 6 * fails);
+        blockUntil = turn + wait;
+        last = { at: new Date().toISOString(), action: 'fail', turn: turn, wait: wait, blockUntil: blockUntil, fails: fails };
+        try { console.warn('[V91] 摘要失败，退避 ' + wait + ' 轮到第 ' + blockUntil + ' 轮'); } catch (e) {}
+        throw err;
+      });
+    };
+
+    window.v91Check = function () {
+      try { console.log('[V91]', { fails: fails, blockUntil: blockUntil, skipped: skipped, last: last }); } catch (e) {}
+      return last;
+    };
+
+    window.__V91_SUMMARY_BACKOFF__ = { isSummary: isSummary, state: function () { return { fails: fails, blockUntil: blockUntil, skipped: skipped }; } };
+
+    console.log('%c[V91] 摘要退避已挂载：失败的压缩不再每轮重试（不写存档）。',
+      'color:#0f766e;font-weight:700');
+  } catch (e) {
+    console.warn('[V91] 安装失败（不影响原游戏）', e);
+  }
+})();
+/* ▲▲▲ V91 完 ▲▲▲ */
 </script>
 </body>
 </html>
