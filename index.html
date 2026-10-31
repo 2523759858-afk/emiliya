@@ -8868,6 +8868,7 @@ function genItemDesc_v11(name) {
 
       var log = state._worldTimelineLog[node.id] || {};
       if (log.override) return; // 已被玩家改变，不再应用原著结果
+      if (log.applied) return; // V92：已应用过，不再重复回写
 
       if (!node.npcs || !node.npcs.length) return;
       node.npcs.forEach(function(change) {
@@ -8900,6 +8901,10 @@ function genItemDesc_v11(name) {
         }
         if (change.location) r.location = change.location;
       });
+
+      log.applied = 1;
+      log.appliedAt = state.time || '';
+      state._worldTimelineLog[node.id] = log;
     });
   }
 
@@ -30542,7 +30547,7 @@ console.log(
   }
 })();
 /* ▲▲▲ V90 完 ▲▲▲ */
-/* ▼▼▼ V91 · 摘要请求退避（只在内存里记状态，不写存档） ▼▼▼ */
+/* ▼▼▼ V91 · 摘要请求退避（不连续跳过；只在内存记状态，不写存档） ▼▼▼ */
 (function () {
   'use strict';
   try {
@@ -30551,9 +30556,9 @@ console.log(
     var fails = 0;
     var blockUntil = 0;
     var skipped = 0;
+    var lastWasSkip = false;
     var last = null;
 
-    /* 只认摘要类请求的固定句式，避免误伤正文 */
     var SUM_RE = /(请压缩成|合并成)\s*\d+\s*字以内/;
 
     function isSummary(msgs) {
@@ -30575,10 +30580,18 @@ console.log(
       try { sum = isSummary(msgs || []); } catch (e) {}
 
       if (sum && turn < blockUntil) {
-        skipped++;
-        last = { at: new Date().toISOString(), action: 'skip', turn: turn, blockUntil: blockUntil, skipped: skipped };
-        return Promise.reject(new Error('摘要请求退避中'));
+        /* 关键：上一次已经跳过，这次必须真发，绝不连续跳过 */
+        if (!lastWasSkip) {
+          lastWasSkip = true;
+          skipped++;
+          last = { at: new Date().toISOString(), action: 'skip', turn: turn, blockUntil: blockUntil, skipped: skipped };
+          return Promise.reject(new Error('摘要请求退避中'));
+        }
+        /* lastWasSkip === true：落到下面，强制发送 */
+        last = { at: new Date().toISOString(), action: 'forced', turn: turn, blockUntil: blockUntil };
       }
+
+      if (sum) lastWasSkip = false;
 
       var p;
       try { p = inner.apply(this, arguments); }
@@ -30592,8 +30605,9 @@ console.log(
         return v;
       }, function (err) {
         fails++;
-        var wait = Math.min(30, 6 * fails);
+        var wait = 6;   /* 固定 6 轮，不再递增 */
         blockUntil = turn + wait;
+        lastWasSkip = false;
         last = { at: new Date().toISOString(), action: 'fail', turn: turn, wait: wait, blockUntil: blockUntil, fails: fails };
         try { console.warn('[V91] 摘要失败，退避 ' + wait + ' 轮到第 ' + blockUntil + ' 轮'); } catch (e) {}
         throw err;
@@ -30601,19 +30615,78 @@ console.log(
     };
 
     window.v91Check = function () {
-      try { console.log('[V91]', { fails: fails, blockUntil: blockUntil, skipped: skipped, last: last }); } catch (e) {}
+      try { console.log('[V91]', { fails: fails, blockUntil: blockUntil, skipped: skipped, lastWasSkip: lastWasSkip, last: last }); } catch (e) {}
       return last;
     };
 
-    window.__V91_SUMMARY_BACKOFF__ = { isSummary: isSummary, state: function () { return { fails: fails, blockUntil: blockUntil, skipped: skipped }; } };
+    window.__V91_SUMMARY_BACKOFF__ = {
+      isSummary: isSummary,
+      state: function () { return { fails: fails, blockUntil: blockUntil, skipped: skipped, lastWasSkip: lastWasSkip }; }
+    };
 
-    console.log('%c[V91] 摘要退避已挂载：失败的压缩不再每轮重试（不写存档）。',
+    console.log('%c[V91] 摘要退避已挂载：失败后固定等 6 轮；最多只跳过一次（不写存档）。',
       'color:#0f766e;font-weight:700');
   } catch (e) {
     console.warn('[V91] 安装失败（不影响原游戏）', e);
   }
 })();
 /* ▲▲▲ V91 完 ▲▲▲ */
+/* ▼▼▼ V92 · 轮数修正：重新生成不再多算一轮（不写存档） ▼▼▼ */
+(function () {
+  'use strict';
+  try {
+    if (window.__V92_TURN_FIX__) return;
+
+    var retry = false;
+    var timer = null;
+
+    function arm() {
+      retry = true;
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(function () { retry = false; }, 10000);
+    }
+    function disarm() {
+      retry = false;
+      if (timer) { clearTimeout(timer); timer = null; }
+    }
+
+    /* 重新生成 = 拿上一轮的行动重跑，不应该算新的一轮 */
+    if (typeof window.regenerateStep === 'function' && !window.regenerateStep.__v92) {
+      var innerRegen = window.regenerateStep;
+      window.regenerateStep = function () {
+        arm();
+        try { return innerRegen.apply(this, arguments); }
+        catch (e) { disarm(); throw e; }
+      };
+      window.regenerateStep.__v92 = true;
+    }
+
+    if (typeof window.execute === 'function' && !window.execute.__v92) {
+      var innerExec = window.execute;
+      window.execute = async function () {
+        var isRetry = retry;
+        disarm();
+        var before = (window.state && window.state._turnCount) || 0;
+        var r = await innerExec.apply(this, arguments);
+        try {
+          if (isRetry && window.state && window.state._turnCount === before + 1) {
+            window.state._turnCount = before;
+            console.log('%c[V92] 重新生成：轮数不增加（保持第 ' + before + ' 轮）',
+              'color:#0f766e');
+          }
+        } catch (e) {}
+        return r;
+      };
+      window.execute.__v92 = true;
+    }
+
+    window.__V92_TURN_FIX__ = { armed: function () { return retry; } };
+    console.log('%c[V92] 轮数修正已挂载：重新生成不再多算一轮。', 'color:#0f766e;font-weight:700');
+  } catch (e) {
+    console.warn('[V92] 安装失败（不影响原游戏）', e);
+  }
+})();
+/* ▲▲▲ V92 完 ▲▲▲ */
 </script>
 </body>
 </html>
