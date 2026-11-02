@@ -2338,6 +2338,7 @@ async function execute() {
     '【持有封印物】' + (state.sealed.join(', ') || '无') + '\n' +
     '【随身背包】' + (state.bag.map(function(b){return b.name+'x'+b.qty;}).join('、') || '空') + '\n' +
     '【在场人物】\n' + (npcCtx || '周围多为不知情的世俗平民') + '\n' +
+    '（以上为当前真相；旧记忆若与之冲突，一律以上方档案与在场人物为准）\n' +
     '【倒排索引召回的相关记忆】\n' + (recalledMem || '近期初临，无陈年渊源') + '\n' +
     '【最近经历】\n' + recentLog + '\n\n' +
     '【玩家此轮行动】' + action + '\n' +
