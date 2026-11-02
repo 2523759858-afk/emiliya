@@ -1184,7 +1184,7 @@ function renderLogWindow() {
 
 function addEntry(tag, cls, c) {
   state.log.push({ tag: tag, cls: cls, content: c, time: state.time });
-  if (state.log.length > 5000) state.log.splice(0, state.log.length - 5000);
+  if (state.log.length > 20000) state.log.splice(0, state.log.length - 20000);
   var l = $('log');
   var d = document.createElement('div'); d.className = 'entry';
   var formatted = formatImmersiveText(c);
@@ -2843,7 +2843,7 @@ function buildSave() {
       recipes: state.recipes,
       memoryEntries: state.memoryEntries.slice(),
       memoryIndex: JSON.parse(JSON.stringify(state.memoryIndex)),
-      logTail: state.log.slice(-500),
+      logTail: state.log.slice(-2000),
       logTotal: state.log.length
     }
   };
@@ -9824,7 +9824,7 @@ function genItemDesc_v11(name) {
       var r = tryParseJSON(raw);
       if (r.ok && r.data && r.data.summary) {
         state.memoryShort.push({ fromTurn: from, toTurn: to, summary: String(r.data.summary).slice(0, 200), createdAt: Date.now() });
-        if (state.memoryShort.length > 100) state.memoryShort = state.memoryShort.slice(-100);
+        if (state.memoryShort.length > 500) state.memoryShort = state.memoryShort.slice(-500);
         console.log('[V43] 短期压缩完成：回合 ' + from + '-' + to);
         return true;
       }
@@ -9844,7 +9844,7 @@ function genItemDesc_v11(name) {
       var r = tryParseJSON(raw);
       if (r.ok && r.data && r.data.summary) {
         state.memoryMid.push({ fromTurn: from, toTurn: to, summary: String(r.data.summary).slice(0, 350), createdAt: Date.now() });
-        if (state.memoryMid.length > 30) state.memoryMid = state.memoryMid.slice(-30);
+        if (state.memoryMid.length > 200) state.memoryMid = state.memoryMid.slice(-200);
         console.log('[V43] 中期压缩完成：回合 ' + from + '-' + to);
         return true;
       }
@@ -9864,7 +9864,7 @@ function genItemDesc_v11(name) {
       var r = tryParseJSON(raw);
       if (r.ok && r.data && r.data.summary) {
         state.memoryLong.push({ fromTurn: from, toTurn: to, summary: String(r.data.summary).slice(0, 500), createdAt: Date.now() });
-        if (state.memoryLong.length > 10) state.memoryLong = state.memoryLong.slice(-10);
+        if (state.memoryLong.length > 100) state.memoryLong = state.memoryLong.slice(-100);
         console.log('[V43] 长期压缩完成：回合 ' + from + '-' + to);
         return true;
       }
@@ -10113,7 +10113,7 @@ function genItemDesc_v11(name) {
       });
       if (dup) return;
       r.memory.push({ turn: turn, time: state.time || '', aboutPlayer: aboutPlayer, event: frag.slice(0, 200), emotion: emotion, _auto: true });
-      if (r.memory.length > 100) r.memory = r.memory.slice(-100);
+      if (r.memory.length > 500) r.memory = r.memory.slice(-500);
     });
   }
 
@@ -10377,9 +10377,9 @@ function genItemDesc_v11(name) {
   if (!state.memoryIndex || typeof state.memoryIndex !== 'object') state.memoryIndex = {};
 
   var MEM_ENTRIES_CAP = 50000;
-  var SHORT_KEEP = 200;
-  var MID_KEEP = 50;
-  var LONG_KEEP = 20;
+  var SHORT_KEEP = 500;
+  var MID_KEEP = 200;
+  var LONG_KEEP = 100;
   var RETRIEVE_LIMIT = 20;
   var RETRIEVE_MIN_SCORE = 5;
 
@@ -10933,7 +10933,7 @@ function genItemDesc_v11(name) {
               emotion: String(item.emotion || '平静').slice(0, 20),
               _from: 'ai'
             });
-            if (r.memory.length > 100) r.memory = r.memory.slice(-100);
+            if (r.memory.length > 500) r.memory = r.memory.slice(-500);
           });
         }
       } catch(e) { console.warn('[V44.1] NPC memory 落库出错：', e.message); }
@@ -12178,7 +12178,7 @@ function genItemDesc_v11(name) {
               emotion: String(item.emotion || '平静').slice(0, 20),
               _from: 'v46_fallback'
             });
-            if (rel.memory.length > 100) rel.memory = rel.memory.slice(-100);
+            if (rel.memory.length > 500) rel.memory = rel.memory.slice(-500);
           });
         }
       } catch(e) {}
@@ -12603,7 +12603,7 @@ function genItemDesc_v11(name) {
             }
           });
           r.memory = keep;
-          if (r._coreMemory.length > 500) r._coreMemory = r._coreMemory.slice(-500);
+          if (r._coreMemory.length > 2000) r._coreMemory = r._coreMemory.slice(-2000);
           if (r.memory.length > 200) r.memory = r.memory.slice(-200);
         }
       });
@@ -12666,7 +12666,7 @@ function genItemDesc_v11(name) {
               });
               if (!dup) {
                 rel._coreMemory.push(mem);
-                if (rel._coreMemory.length > 500) rel._coreMemory = rel._coreMemory.slice(-500);
+                if (rel._coreMemory.length > 2000) rel._coreMemory = rel._coreMemory.slice(-2000);
               }
             }
             mem._graded = true;
@@ -12762,7 +12762,7 @@ function genItemDesc_v11(name) {
       var core = Array.isArray(r._coreMemory) ? r._coreMemory : [];
       if (core.length) {
         L.push('· 核心记忆（' + core.length + '条，最近15条）：');
-        core.slice(-15).forEach(function(m){
+        core.slice(-40).forEach(function(m){
           L.push('    ⚓ R' + (m.turn || '?') + ' ' + (m.aboutPlayer ? '[关于玩家] ' : '') + safeStr(m.event, 100));
         });
       }
@@ -12770,7 +12770,7 @@ function genItemDesc_v11(name) {
       var mem = Array.isArray(r.memory) ? r.memory : [];
       if (mem.length) {
         L.push('· 最近记忆（' + mem.length + '条，显示10条）：');
-        mem.slice(-10).forEach(function(m){
+        mem.slice(-30).forEach(function(m){
           L.push('    · R' + (m.turn || '?') + ' ' + safeStr(m.event, 80));
         });
       }
@@ -12893,7 +12893,7 @@ function genItemDesc_v11(name) {
       }
 
       // 块4：最近 50 轮精细
-      var recent = (state.memoryEntries || []).filter(function(m){ return m && !m._fallback && !m.placeholder; }).slice(-50);
+      var recent = (state.memoryEntries || []).filter(function(m){ return m && !m._fallback && !m.placeholder; }).slice(-100);
       if (recent.length) {
         out.push('══【块4】最近 ' + recent.length + ' 轮精细记录══');
         recent.forEach(function(m){
@@ -15977,7 +15977,7 @@ console.log(
            */
           var size2 = totalMessageSize(msgs);
 
-          if(size2 > 120000){
+          if(size2 > 300000){
 
             msgs.forEach(function(m){
 
@@ -17175,12 +17175,12 @@ console.log(
     var recall = s.slice(a, b);
     var suffix = s.slice(b);
 
-    var maxLen = aggressive ? 7000 : 14000;
+    var maxLen = aggressive ? 30000 : 60000;
 
     if(recall.length > maxLen){
 
-      var first = aggressive ? 2500 : 5000;
-      var last = aggressive ? 4000 : 8500;
+      var first = aggressive ? 15000 : 30000;
+      var last = aggressive ? 15000 : 30000;
 
       recall =
         recall.slice(0, first) +
@@ -20320,12 +20320,12 @@ console.log(
       });
     }
 
-    if(state._v64Memory.turns.length > 80){
+    if(state._v64Memory.turns.length > 300){
       state._v64Memory.turns =
         state._v64Memory.turns.slice(-80);
     }
 
-    if(state._v64Memory.important.length > 100){
+    if(state._v64Memory.important.length > 300){
       state._v64Memory.important =
         state._v64Memory.important.slice(-100);
     }
@@ -26820,7 +26820,7 @@ console.log(
     if (s.sourceQualities !== undefined) save.world.sourceQualities = cloneValue(s.sourceQualities);
     save.system = save.system || {};
     ['memory','recipes','memoryEntries','memoryIndex','_v58NpcFacts','_v64ItemMeta','_v64Facts','_v64Memory','_v67SafeFacts','_v67SafeBranches','_v67SafeMemory','_v67SafeTarot','_v67SafeLastDate','_v67MeetingDue','_worldTimelineLog'].forEach(function(k){ if(s[k] !== undefined){ save.system[k] = cloneValue(s[k]); } });
-    if (Array.isArray(s.log)) { save.system.logTail = cloneValue(s.log.slice(-500)); save.system.logTotal = s.log.length; }
+    if (Array.isArray(s.log)) { save.system.logTail = cloneValue(s.log.slice(-2000)); save.system.logTotal = s.log.length; }
   }
   function repairSavedRecord(save, collection){
     if (!save || typeof save !== 'object') return false;
@@ -28620,12 +28620,12 @@ console.log(
     if (b < 0) b = s.length;
 
     var recall = s.slice(a, b);
-    var limit = aggressive ? 7000 : 14000;
+    var limit = aggressive ? 30000 : 60000;
     if (recall.length <= limit) return s;
 
-    recall = recall.slice(0, aggressive ? 2500 : 5000) +
+    recall = recall.slice(0, aggressive ? 15000 : 30000) +
       '\n\n【中间历史记忆仅在本次请求中压缩；本地记忆库未修改】\n\n' +
-      recall.slice(-(aggressive ? 4000 : 8500));
+      recall.slice(-(aggressive ? 15000 : 30000));
 
     return s.slice(0, a) + recall + s.slice(b);
   }
@@ -28642,7 +28642,7 @@ console.log(
 
     var size = messageSize(out);
 
-    if (size > 60000) {
+    if (size > 200000) {
       // 第一阶段优先压缩重复注入块和长记忆，尽量保留内置原著资料。
       out.messages.forEach(function(m) {
         if (!m || typeof m.content !== 'string') return;
@@ -28655,7 +28655,7 @@ console.log(
       });
     }
 
-    if (messageSize(out) > 85000) {
+    if (messageSize(out) > 400000) {
       // 只有请求仍然很大、且另有按需注入世界书时，才省略重复全文。
       out.messages.forEach(function(m) {
         if (!m || typeof m.content !== 'string') return;
