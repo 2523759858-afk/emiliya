@@ -1975,8 +1975,11 @@ function getSaves() {
 }
 
 function setSaves(s) {
-  _savesCache = s;
-  saveAllSavesToDB(s).then(function(ok) { if (!ok) console.warn('IndexedDB 写入失败'); });
+  var snapshot;
+  try { snapshot = JSON.parse(JSON.stringify(s)); }
+  catch (e) { snapshot = s; }
+  _savesCache = snapshot;
+  saveAllSavesToDB(snapshot).then(function(ok) { if (!ok) console.warn('IndexedDB 写入失败'); });
   return true;
 }
 
