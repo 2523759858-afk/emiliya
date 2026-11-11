@@ -1167,6 +1167,21 @@ function toast(m) {
 // 沉浸转换（保留原逻辑）
 function formatImmersiveText(rawText) {
   if (!rawText) return '';
+  function normSpeaker(raw) {
+    var t = String(raw || '').trim();
+    t = t.replace(/[（(【\[]\s*(玩家|我|主角|自己)\s*[）)】\]]$/, '').trim();
+    t = t.replace(/^[（(【\[]\s*(玩家|我|主角|自己)\s*[）)】\]]/, '').trim();
+    var verbs = ['低声道','轻声道','冷声道','开口道','补充道','解释道','低声说','轻声说','开口说','冷笑道','微笑道','说道','问道','答道','笑道','喊道','叹道','轻语','冷笑','微笑','说','道','问','答','喊','叹'];
+    verbs.sort(function(a, b) { return b.length - a.length; });
+    for (var i = 0; i < verbs.length; i++) {
+      var v = verbs[i];
+      if (t.length > v.length && t.slice(-v.length) === v) {
+        var left = t.slice(0, -v.length);
+        if (left.length >= 2 || ['我','你','他','她'].indexOf(left) >= 0) { t = left; break; }
+      }
+    }
+    return t.trim();
+  }
   var lines = rawText.split('\n');
   var htmlOut = '';
   lines.forEach(function(line) {
@@ -1174,9 +1189,9 @@ function formatImmersiveText(rawText) {
     if (!trimmed) return;
     var speechMatch = trimmed.match(/^([^\s：“”]{1,10})[：:说问道喊叹轻语冷笑微笑道\s]*[“"「]([^”"」]+)[”"」]$/);
     if (speechMatch) {
-      var speaker = speechMatch[1]; var speech = speechMatch[2];
+      var speaker = normSpeaker(speechMatch[1]); var speech = speechMatch[2];
       var playerName = state.meta.playerName || '我';
-      var isPlayer = (speaker === playerName || (playerName.length >= 2 && speaker.indexOf(playerName) === 0) || speaker === '我' || speaker === '你' || speaker === '玩家' || speaker === '主角' || speaker === '自己');
+      var isPlayer = (speaker === playerName || (playerName.length >= 2 && speaker.indexOf(playerName) === 0) || (speaker.length >= 2 && playerName.indexOf(speaker) === 0) || speaker === '我' || speaker === '你' || speaker === '玩家' || speaker === '主角' || speaker === '自己');
       var displaySpeaker = isPlayer ? playerName : speaker;
       var avatarDisplay = '';
       if (isPlayer) avatarDisplay = state.avatar ? '<img src="' + state.avatar + '">' : playerName.charAt(0);
