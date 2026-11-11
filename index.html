@@ -1172,23 +1172,25 @@ function formatImmersiveText(rawText) {
   lines.forEach(function(line) {
     var trimmed = line.trim();
     if (!trimmed) return;
-    var speechMatch = trimmed.match(/^([^\s：“”]{2,8})[：:说问道喊叹轻语冷笑微笑道\s]*[“"「]([^”"」]+)[”"」]$/);
+    var speechMatch = trimmed.match(/^([^\s：“”]{1,10})[：:说问道喊叹轻语冷笑微笑道\s]*[“"「]([^”"」]+)[”"」]$/);
     if (speechMatch) {
       var speaker = speechMatch[1]; var speech = speechMatch[2];
-      var isPlayer = (speaker === (state.meta.playerName || '我'));
+      var playerName = state.meta.playerName || '我';
+      var isPlayer = (speaker === playerName || (playerName.length >= 2 && speaker.indexOf(playerName) === 0) || speaker === '我' || speaker === '你' || speaker === '玩家' || speaker === '主角' || speaker === '自己');
+      var displaySpeaker = isPlayer ? playerName : speaker;
       var avatarDisplay = '';
-      if (isPlayer) avatarDisplay = state.avatar ? '<img src="' + state.avatar + '">' : (state.meta.playerName ? state.meta.playerName.charAt(0) : '我');
+      if (isPlayer) avatarDisplay = state.avatar ? '<img src="' + state.avatar + '">' : playerName.charAt(0);
       else if (state.relations[speaker] && state.relations[speaker].avatar) avatarDisplay = '<img src="' + state.relations[speaker].avatar + '">';
       else avatarDisplay = speaker.charAt(0);
       htmlOut += '<div class="speech-row ' + (isPlayer ? 'player' : '') + '">' +
-        '<div class="speech-avatar-wrap"><div class="speech-avatar">' + avatarDisplay + '</div><div class="speech-speaker">' + speaker + '</div></div>' +
+        '<div class="speech-avatar-wrap"><div class="speech-avatar">' + avatarDisplay + '</div><div class="speech-speaker">' + displaySpeaker + '</div></div>' +
         '<div class="speech-bubble">“' + speech + '”</div></div>';
       return;
     }
     var procLine = trimmed
       .replace(/<thought>([\s\S]*?)<\/thought>/gi, '<span class="inner-thought">（$1）</span>')
       .replace(/[（\(](心想|心道|默念|内心|暗忖)[：: ]*([^）\)]+)[）\)]/g, '<span class="inner-thought">（$1：$2）</span>')
-      .replace(/([^\s：“”]{2,8})[：:说问道]+[“"「]([^”"」]+)[”"」]/g, function(match, spk, spc) {
+      .replace(/([^\s：“”]{1,10})[：:说问道]+[“"「]([^”"」]+)[”"」]/g, function(match, spk, spc) {
         return '<strong>' + spk + '</strong>：“<span style="color:var(--bronze-dark);font-weight:600">' + spc + '</span>”';
       });
     htmlOut += '<p style="text-indent:2em;margin-bottom:8px">' + procLine + '</p>';
