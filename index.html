@@ -2501,7 +2501,17 @@ async function execute() {
       meta: state.meta, time: state.time, weather: state.weather, location: state.location,
       _turnCount: state._turnCount,
       money: state.money, currency: state.currency, appearance: state.appearance, avatar: state.avatar,
-      identity: state.identity, residence: state.residence,
+      appearanceFace: state.appearanceFace, appearanceBody: state.appearanceBody,
+      appearanceCloth: state.appearanceCloth, appearanceExpression: state.appearanceExpression,
+      identity: state.identity, residence: state.residence, origin: state.origin,
+      memoryEra: state.memoryEra, openThreads: state.openThreads, _historyWarnings: state._historyWarnings,
+      sourceResonance: state.sourceResonance, sourceHeld: state.sourceHeld,
+      uniqueness: state.uniqueness, ascended: state.ascended,
+      _pollutionDebt: state._pollutionDebt, _pollutionState: state._pollutionState,
+      _sourceRollCd: state._sourceRollCd, _lastSourcePromptTurn: state._lastSourcePromptTurn,
+      _softFacts: state._softFacts, _softFactAsked: state._softFactAsked,
+      _activeTasks: state._activeTasks, _worldTimelineLog: state._worldTimelineLog,
+      _slotId: state._slotId,
       hp: state.hp, maxHp: state.maxHp, mp: state.mp, maxMp: state.maxMp,
       sp: state.sp, maxSp: state.maxSp, sanity: state.sanity, maxSanity: state.maxSanity,
       path: state.path, seq: state.seq, digest: state.digest, abilities: state.abilities,
@@ -2568,8 +2578,8 @@ async function execute() {
 }
 
 function rollbackStep() {
-  if (!historyStack.length) { toast('暂无上一轮因果记录可回溯'); return; }
-  if (!confirm('确定将世界状态完整回溯至上一轮？')) return;
+  if (!historyStack.length) { toast('暂无上一轮因果记录可回溯'); return false; }
+  if (!confirm('确定将世界状态完整回溯至上一轮？')) return false;
   var snap = historyStack.pop();
   state.log = state.log.slice(0, snap.logLength);
   // 恢复核心状态
@@ -2579,10 +2589,11 @@ function rollbackStep() {
   renderLogWindow();
   renderUI();
   toast('↩ 因果律已成功回溯至上一轮');
+  return true;
 }
 
 function regenerateStep() {
-  if (!historyStack.length) { toast('暂无上一轮行动记录'); return; }
+  if (!historyStack.length) { toast('暂无上一轮行动记录'); return false; }
   var snap = historyStack.pop();
   var act = snap.action;
   state.log = state.log.slice(0, snap.logLength);
@@ -2592,6 +2603,7 @@ function regenerateStep() {
   renderLogWindow(); renderUI();
   $('actionInput').value = act;
   execute();
+  return true;
 }
 
 async function genInit() {
@@ -11587,8 +11599,9 @@ function genItemDesc_v11(name) {
       // 屏蔽原函数的二次 confirm
       var _c = window.confirm;
       window.confirm = function(){ return true; };
-      try { _orb.apply(this, arguments); } finally { window.confirm = _c; }
-      popMemStack();
+      var _r;
+      try { _r = _orb.apply(this, arguments); } finally { window.confirm = _c; }
+      if (_r === true) popMemStack();
     };
     window.rollbackStep.__v443 = true;
   }
@@ -11599,10 +11612,11 @@ function genItemDesc_v11(name) {
       // regenerate 会 push 新的快照，所以先取旧的再重新走
       var ok = window.confirm ? confirm('重新推演上一轮？') : true;
       if (!ok) return;
+      if (!historyStack.length) { if (typeof toast === 'function') toast('暂无上一轮行动记录'); return; }
+      popMemStack();
       var _c = window.confirm;
       window.confirm = function(){ return true; };
       try { _org.apply(this, arguments); } finally { window.confirm = _c; }
-      // regenerate 后 _memStack 会有新的 push；保持现状即可
     };
     window.regenerateStep.__v443 = true;
   }
