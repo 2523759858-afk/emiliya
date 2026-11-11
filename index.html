@@ -99,12 +99,24 @@ header{background:#f3ecdb;border-bottom:1.5px solid var(--bd-dark);padding:8px 1
 .badge-red{background:var(--red-bg);color:var(--red);border:1px solid #f49898;animation:pulseRed 1.5s infinite}
 @keyframes pulseRed{0%,100%{box-shadow:0 0 0 rgba(220,38,38,0)}50%{box-shadow:0 0 8px rgba(220,38,38,0.4)}}
 .seq-普通{color:var(--tx-sub);font-weight:600}
+#pathName, #pathSeq { font-family: "Songti SC","Noto Serif SC",Georgia,"Times New Roman",serif; letter-spacing:2px; }
+#pathName { font-size:17px; font-weight:700; }
+#pathSeq { font-size:16px; font-weight:700; }
+.path-grid { display:flex; gap:10px; margin:10px 0 12px; }
+.path-cell { flex:1; min-width:0; padding:10px; border:1px solid var(--bd-bronze); border-radius:10px; background:linear-gradient(180deg,#fffdf8,#f4ecdc); box-shadow:0 1px 3px rgba(74,57,32,.08); }
+.pc-label { font-size:10px; color:var(--tx-dim); letter-spacing:2px; margin-bottom:6px; }
+.pc-value { display:flex; align-items:center; gap:8px; min-width:0; font-family:"Songti SC","Noto Serif SC",Georgia,serif; font-weight:700; color:var(--bronze-dark); }
+#pathName { font-size:17px; letter-spacing:2px; white-space:nowrap; }
+#pathSeq { font-size:15px; letter-spacing:1px; line-height:1.3; white-space:normal; }
+.path-icon { width:34px; height:34px; flex:0 0 34px; border-radius:50%; border:2px solid var(--bd-bronze); box-shadow:0 0 0 2px rgba(255,253,248,.6), 0 2px 6px rgba(74,57,32,.2); object-fit:cover; background:#1b1830; margin:0; }
+@media(max-width:420px){ .path-grid { flex-direction:column; } }
 .seq-低{color:#555;font-weight:700}
 .seq-中{color:#1e40af;font-weight:700;text-shadow:0 0 6px rgba(30,64,175,0.25)}
 .seq-半神{color:#7e22ce;font-weight:700;text-shadow:0 0 8px rgba(126,34,206,0.35)}
 .seq-天使{color:#b45309;font-weight:700;animation:goldPulse 2s infinite ease-in-out}
 @keyframes goldPulse{0%,100%{text-shadow:0 0 6px rgba(217,119,6,0.4)}50%{text-shadow:0 0 14px rgba(245,158,11,0.8)}}
 .seq-天使王{color:#b45309;font-weight:800;animation:goldPulse 1.5s infinite}
+.angel-crown{color:#b45309;font-size:11px;margin-right:2px;text-shadow:0 0 4px rgba(180,83,9,.45)}
 .seq-真神{background:linear-gradient(90deg,#dc2626,#ea580c,#d97706,#16a34a,#0284c7,#9333ea,#dc2626);background-size:250% 100%;-webkit-background-clip:text;-webkit-text-fill-color:transparent;font-weight:800;animation:rainbow 4s linear infinite}
 @keyframes rainbow{from{background-position:0% 50%}to{background-position:250% 50%}}
 .seal-0{color:#b91c1c!important;font-weight:800;animation:sealRedBlink 1.4s infinite ease-in-out}
@@ -547,8 +559,16 @@ header{background:#f3ecdb;border-bottom:1.5px solid var(--bd-dark);padding:8px 1
 
     <div class="panel" id="panel-path">
       <h3>非凡位格</h3>
-      <div class="row"><span>神之途径</span><span class="v" id="pathName">普通人</span></div>
-      <div class="row"><span>序列位阶</span><span class="v" id="pathSeq">凡俗</span></div>
+      <div class="path-grid">
+        <div class="path-cell">
+          <div class="pc-label">神之途径</div>
+          <div class="pc-value"><img id="pathIcon" class="path-icon" alt="" onerror="this.style.display='none'"><span id="pathName">普通人</span></div>
+        </div>
+        <div class="path-cell">
+          <div class="pc-label">序列位阶</div>
+          <div class="pc-value"><span id="pathSeq">凡俗</span></div>
+        </div>
+      </div>
       <div class="row"><span>扮演法则</span><span class="v dim" id="actingLawTxt">未觉醒</span></div>
       <div class="row"><span>人性之锚</span><span class="v dim" id="humanityAnchorTxt">凡俗自我</span></div>
       <h3>掌握非凡能力 / 权柄</h3>
@@ -715,7 +735,7 @@ var PATH_DEFAULT_ABILITIES = {
   "刺客": [{ name: "鹰视", desc: "夜视与超远距离视力增强。" }, { name: "收敛杀意", desc: "潜伏于阴影之中。" }, { name: "致命短刃", desc: "近身弱点穿刺杀伤力倍增。" }],
   "猎人": [{ name: "气味追踪", desc: "循着气味残迹精准索敌。" }, { name: "设伏与陷阱", desc: "快速布置隐蔽陷阱。" }],
   "不眠者": [{ name: "极夜视界", desc: "黑暗无光环境视物如白昼。" }, { name: "微量睡眠", desc: "每日仅需两小时浅睡眠。" }],
-  "普通人": [{ name: "凡俗体魄", desc: "平平无奇的肉体凡胎。" }, { name: "世俗求生", desc: "凭借日常经验艰难求生。" }]
+
 };
 
 /* ============================================================
@@ -761,7 +781,7 @@ function resetWorldState() {
   state.hp = 100; state.maxHp = 100; state.mp = 10; state.maxMp = 10;
   state.sp = 100; state.maxSp = 100; state.sanity = 100; state.maxSanity = 100;
   state.path = "普通人"; state.seq = "凡俗"; state.digest = 0;
-  state.abilities = (PATH_DEFAULT_ABILITIES["普通人"] || []).slice();
+  state.abilities = [];
   state.equip = { head: null, body: null, legs: null, feet: null, weapon: null, accessory: null };
   state.sealed = []; state.bag = []; state.houses = [];
   state.relations = {}; state.worldEvents = [];
@@ -787,6 +807,27 @@ function seqClass(s) {
   if (s.indexOf('序列8') >= 0 || s.indexOf('序列9') >= 0 || s.indexOf('低序列') >= 0) return 'seq-低';
   return 'seq-普通';
 }
+function angelKing(name, r) {
+  r = r || {};
+  var text = [r.seq, r.identity, r.title, r.rank, r.desc].filter(Boolean).join(' ');
+  if (/序列0|真神/.test(text)) return false;
+  if (text.indexOf('天使之王') >= 0) return true;
+  var known = ['阿蒙', '亚当', '梅迪奇', '萨斯利尔', '乌洛琉斯', '奥塞库斯', '列奥得罗', '赫拉伯根'];
+  for (var i = 0; i < known.length; i++) {
+    if (name && String(name).indexOf(known[i]) >= 0) return true;
+  }
+  return false;
+}
+
+function playerAngelKing() {
+  try {
+    if (state.angelKing === true) return true;
+    var text = [state.identity, state.title, state.seq].filter(Boolean).join(' ');
+    if (/序列0|真神/.test(text)) return false;
+    return text.indexOf('天使之王') >= 0;
+  } catch (e) { return false; }
+}
+
 function getSealBadge(s) {
   if (s.indexOf('0-') === 0 || s.indexOf('0级') >= 0 || s.indexOf('神级') >= 0) return { cls: 'seal-0', icon: '🔴', lvl: '0级 · 极度危险' };
   if (s.indexOf('1-') === 0 || s.indexOf('1级') >= 0 || s.indexOf('圣级') >= 0) return { cls: 'seal-1', icon: '🟣', lvl: '1级 · 高度危险' };
@@ -875,7 +916,7 @@ async function callAPI(msgs, c) {
   var lastErr = null;
   for (var i = 0; i < targets.length; i++) {
     try {
-      var data = await unifiedRequest(targets[i], key, payload, 45000);
+      var data = await unifiedRequest(targets[i], key, payload, 120000);
       if (!data.choices || !data.choices[0] || !data.choices[0].message) throw new Error('返回结构异常');
       return data.choices[0].message.content;
     } catch (e) { lastErr = e; }
@@ -1255,8 +1296,14 @@ function renderUI() {
   e = $('sanBar'); if (e) e.style.width = (state.maxSanity > 0 ? (state.sanity / state.maxSanity * 100) : 0) + '%';
   st('sanBarTxt', state.sanity + '/' + state.maxSanity);
   st('pathName', state.path);
+  var _pi = $('pathIcon');
+  if (_pi) {
+    var _src = (typeof PATH_ICONS !== 'undefined' && PATH_ICONS[state.path]) || '';
+    if (_src) { _pi.src = _src; _pi.style.display = ''; }
+    else { _pi.removeAttribute('src'); _pi.style.display = 'none'; }
+  }
   e = $('pathSeq');
-  if (e) { e.textContent = state.seq; e.className = 'v ' + seqClass(state.seq); }
+  if (e) { e.textContent = state.seq + (playerAngelKing() ? ' 👑' : ''); e.className = 'v ' + (playerAngelKing() ? 'seq-天使王' : seqClass(state.seq)); }
   st('digestTxt', state.digest + '%');
   e = $('digestBar'); if (e) e.style.width = state.digest + '%';
   st('digestBarTxt', state.digest + '%');
@@ -1283,7 +1330,7 @@ function renderAbilities() {
   box.innerHTML = '';
   var abs = state.abilities || [];
   if (!abs.length) {
-    var defs = PATH_DEFAULT_ABILITIES[state.path] || PATH_DEFAULT_ABILITIES["普通人"];
+    var defs = PATH_DEFAULT_ABILITIES[state.path] || [];
     state.abilities = defs.slice(); abs = state.abilities;
   }
   abs.forEach(function(ab) {
@@ -1381,7 +1428,7 @@ function renderSrc() {
     d.className = 'sq-card ' + (owned ? 'owned' : 'locked');
     d.innerHTML = '<span class="sq-i">' + sq.i + '</span><div class="sq-n">' + sq.n + '</div><div class="sq-t">' + sq.t + '</div>';
     d.onclick = function() {
-      alert('【' + sq.n + '】\n位阶分类：' + sq.t + '\n统御途径：' + sq.paths + '\n' + sq.desc + '\n\n当前状态：' + (owned ? '已容纳并同调' : '凡俗未曾触碰'));
+      alert('【' + sq.n + '】\n位阶分类：' + sq.t + '\n统御途径：' + sq.paths + '\n' + sq.desc + '\n\n当前状态：' + (owned ? '已容纳并同调' : '凡俗未曾触碰') + (typeof window.uniqStatusTextV28 === 'function' ? window.uniqStatusTextV28(sq.n) : ''));
     };
     g.appendChild(d);
   });
@@ -1399,7 +1446,7 @@ function renderRel() {
     var d = document.createElement('div'); d.className = 'rel-item';
     d.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center">' +
         '<div style="display:flex;align-items:center;gap:10px">' + avatarHTML(n, r.avatar) +
-          '<div><div class="rel-name">' + n + '</div><div style="font-size:10px;margin-top:2px;color:var(--tx-dim)"><span style="color:' + (h ? 'var(--green)' : 'var(--tx-dim)') + '">● ' + (r.status || '不在场') + '</span> · <span class="' + seqClass(r.seq) + '">' + (r.seq || '凡俗') + '</span></div></div>' +
+          '<div><div class="rel-name">' + (angelKing(n, r) ? '<span class="angel-crown">👑</span>' : '') + n + '</div><div style="font-size:10px;margin-top:2px;color:var(--tx-dim)"><span style="color:' + (h ? 'var(--green)' : 'var(--tx-dim)') + '">● ' + (r.status || '不在场') + '</span> · <span class="' + (angelKing(n, r) ? 'seq-天使王' : seqClass(r.seq)) + '">' + (r.seq || '凡俗') + '</span></div></div>' +
         '</div><div style="font-size:11px;color:var(--bronze-dark);font-weight:700">' + (r.fav || '冷淡') + '</div></div>' +
       '<div class="fav-bar-container"><div class="fav-bar-bg"><div class="fav-bar-fill" style="width:' + favV + '%;"></div></div><span class="fav-bar-val">' + favV + '/100</span></div>';
     d.onclick = function() { openCharModal(n); };
@@ -1480,7 +1527,7 @@ function openCharModal(n) {
   var spC = r.sp || 100, spM = r.maxSp || spC;
   $('ctab-status').innerHTML =
     '<div class="row"><span>所属途径</span><span class="v">' + (r.path || '凡俗') + '</span></div>' +
-    '<div class="row"><span>序列位阶</span><span class="v ' + seqClass(r.seq) + '">' + (r.seq || '凡俗') + '</span></div>' +
+    '<div class="row"><span>序列位阶</span><span class="v ' + (angelKing(n, r) ? 'seq-天使王' : seqClass(r.seq)) + '">' + (r.seq || '凡俗') + (angelKing(n, r) ? ' 👑' : '') + '</span></div>' +
     '<div style="margin-top:12px"><div class="row"><span>体能</span><span class="v">' + hpC + '/' + hpM + '</span></div><div class="bar"><div class="hp" style="width:' + (hpM > 0 ? (hpC / hpM * 100) : 0) + '%"></div></div>' +
       '<div class="row"><span>灵性</span><span class="v">' + mpC + '/' + mpM + '</span></div><div class="bar"><div class="mp" style="width:' + (mpM > 0 ? (mpC / mpM * 100) : 0) + '%"></div></div>' +
       '<div class="row"><span>精神</span><span class="v">' + spC + '/' + spM + '</span></div><div class="bar"><div class="sp" style="width:' + (spM > 0 ? (spC / spM * 100) : 0) + '%"></div></div></div>';
@@ -2049,6 +2096,63 @@ function renderLoadSlots() {
 /* ============================================================
    第十五部分 · GM_SYSTEM（含 memoryEntry 结构化记忆字段）
    ============================================================ */
+/* 摘要兼容：新格式用字段拼，旧格式读 summary */
+function summaryText(s) {
+  if (!s) return '';
+  var has = (Array.isArray(s.events) && s.events.length) ||
+            (Array.isArray(s.changes) && s.changes.length) ||
+            (Array.isArray(s.promises) && s.promises.length) ||
+            (Array.isArray(s.open) && s.open.length) ||
+            (Array.isArray(s.npcs) && s.npcs.length);
+  if (has) {
+    var p = [];
+    if (s.events && s.events.length) p.push('事件：' + s.events.join('；'));
+    if (s.changes && s.changes.length) p.push('变化：' + s.changes.join('；'));
+    if (s.promises && s.promises.length) p.push('承诺：' + s.promises.join('；'));
+    if (s.open && s.open.length) p.push('未了：' + s.open.join('；'));
+    if (s.npcs && s.npcs.length) p.push('人物：' + s.npcs.join('、'));
+    return p.join('｜');
+  }
+  return s.summary || s.text || '';
+}
+/* 能力注入：名字 + 一句说明；兼容字符串与对象 */
+function abilityText(list, maxDesc) {
+  maxDesc = maxDesc || 50;
+  return (Array.isArray(list) ? list : []).map(function (a) {
+    if (!a) return '';
+    if (typeof a === 'string') return a;
+    var n = a.name || '';
+    if (!n) return '';
+    var d = a.desc || a.description || a.effect || '';
+    d = String(d || '').replace(/\s+/g, ' ').slice(0, maxDesc);
+    return d ? (n + '（' + d + '）') : n;
+  }).filter(Boolean).join('；');
+}
+var PATH_ICONS = {
+ "观众": "data:image/webp;base64,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",
+ "占卜家": "data:image/webp;base64,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",
+ "水手": "data:image/webp;base64,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",
+ "战士": "data:image/webp;base64,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",
+ "刺客": "data:image/webp;base64,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",
+ "学徒": "data:image/webp;base64,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",
+ "偷盗者": "data:image/webp;base64,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",
+ "歌颂者": "data:image/webp;base64,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",
+ "阅读者": "data:image/webp;base64,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",
+ "秘祈人": "data:image/webp;base64,UklGRtgFAABXRUJQVlA4WAoAAAAQAAAAXwAAXwAAQUxQSLkCAAABDkna/qdtZGuKO273Q0dgph3jeuYA0wsMw36m215gmJmZObcow+wC9vM0TprYv+5/0t+SIsKB20iKVNVD3cfY9AKmwHBJi2aCtqfbudzZmsfTYjWzp3aKJPs2Dp17/LwwPmYMTcHrc0OuLyApLRkrxJLs3Xv5+2zcAHOj93qSVmUHG5KDx+5OxPOslPKyY5QgnctzyjwnvBkMGNqMdopcNzKasJWjRibtEqZRsy6gymAjQu58HouU69kaMzkR8TtJJSmjJbnTtZrmFDq5aUlVS668EkulLCnRUeSKD6hS1LaenKnZpbgxvjU1pePKjyJlSZlOhD4dCS2PTMR5JKlT5zLBwIZp3MalOtoMlL75mxB2X4tdJBlRO7mWUzU7vsfFOEMWYzMvKYzspblRkoyZNyOhJAeCKN3gPwxv1lqzNjJwDYmjrw4M8Q19wS0P1VoRjIdoG7iFpVOVCAWafumCNxDatq9xWWDoxBurF9KdSOpwVG4BldJLZ8sRErTLl4aq/nojqUNS3aCtO7ZUB5psqSeKbyI8aAaq7loROLLeouRN9Yx3pEouNlxVXREXo23yPCIlRORiEkfN/vFII0Jr08+QbOHRpB3RzKCFVPpRhArtQ0XNrqk4woQWbxha7ooqAkpqH9jWYDjOUZHLMFuV/RXjTuKtCvr+Vy2oBt9HrqtacA3rAh6XHBe5OPIiNiz5WMq4cKLJJ9gw7CwI8kWk4HunJcKFFvqeMWzQuXFsmEUA/AP+RfBvCP57jf+7hP+7iv+/sAj+1/D/l/H9Cny/CN+vw/dL4f1q/LgAP66Bj8vw40r4uBg/rofPS+DnVeDzQvh5Lfi8HH5eET4vCp/Xhc9L4+fV4esC8HUN+LoMfF0Jvi4GX9eDr0ui11Xh68LwdW30ujx8XwF6XwR6Xwd6X8oi76uB7wsiAFZQOCD4AgAA0BIAnQEqYABgAD8RhLNTrDe/qCq4CgPwIglsAMJ4pY5cwF2wbxuWFUiA9UivddLOOvjoxOxXocNYSu+CBTz8KqlH0gUKTtrg9PoCr2LRxZtFuAGS/i6+dIMk5ksbNTF717JyrmpEmc98ElxVE+YOEbNPI99qb/oDjXQnCyDlBTgiqaJ59AT/0LdkDQ697QBUaGMllRV85vm8QtlyLiYAAP73ix+MBbNOO93qc8w04PhLKJwk5oi3a1LeUgEA9ak6YrQwR4mvPtfHxEmpVjnZx76cvycdAXKGm6Now6EJEu9rVhbrfb3rIVPxR/ErdmkewoOBHvpJVpgOThuiFNFn53jMKarmTEKtLBZ/0rktl+kKwbnxwqmgDwIWndUMDcrqdj2bArZrEGaC9PmoIJyfDDZdBHySjipa7YoYW3SiF6jmdkgY4bve4IW24Dmpe+IbFY4yGTZXmzCufLGS1NCy5fijj2FTtXO6bKjXUs+FhHT0gb2Bkm/g2zBUxamdIpQwzKQ0u7A9c0LQCva20RLQWDNkhCUJHZ8tw4GM/AEGzNeFJEMP3n0D9r3A4TVSxeO1Oldx/XI3NjAkYN9gxV2M8arZp72e1aLIh3DsLInIJ2kYELxWJLnh3VD+fnS4d03MtvbToX6/0HSk08R+r8c+U4NpsuWap8TESyNwU6K8oauHf9RgL4MR3hw7+GPd25M762+N+FksAJotzIoEBseSc447huBe85u4EK/rEJv1FOqmtzj6kjZGlPV8CL0Q6zgAFSeJid+Jk/d5N/88/RupJviEr7UTU8CKJERyBuQrHnW7bWHT3S5aH2hxXDoR/C4g4N81ZmwSNt5mZ7WSkgUqD7tcjwHNNXV3D6VFHEzsS1gvrNmWx5v+UP1uvvcs/ixlh9NE1dAY5ELkIlJfXSx2dCdg4x5P+6BRlAb3eDbOEW+eZmFvgYSMiaHz+4DJOduA1W0/KCRf0CGKqFaxUFJIvIcx5Qy/4fvN3//QCDv76yPRK1w/HwAAAA==",
+ "不眠者": "data:image/webp;base64,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",
+ "收尸人": "data:image/webp;base64,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",
+ "猎人": "data:image/webp;base64,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",
+ "窥秘人": "data:image/webp;base64,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",
+ "通识者": "data:image/webp;base64,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",
+ "怪物": "data:image/webp;base64,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",
+ "耕种者": "data:image/webp;base64,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",
+ "药师": "data:image/webp;base64,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",
+ "罪犯": "data:image/webp;base64,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",
+ "囚犯": "data:image/webp;base64,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",
+ "仲裁人": "data:image/webp;base64,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",
+ "律师": "data:image/webp;base64,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"
+};
+
 var GM_SYSTEM = `你是《诡秘之主》世界最高模拟器GM。世界锚定：第五纪1349年6月底，廷根市。
 
 【核心推演法则】
@@ -2247,47 +2351,136 @@ function renderCurrency() {
    ============================================================ */
 var mapData = {
   world: { title: "世界格局", nodes: [
-      { n: "北大陆", s: "鲁恩、因蒂斯、弗萨克等人类主诸国", k: "east" },
-      { n: "南大陆", s: "拜朗帝国故地，殖民与图铎遗留", k: "south", cond: "需搭乘客轮或海盗船" },
-      { n: "迷雾海", s: "西部波涛海域，法林港与群岛", k: "misty", cond: "需拥有适航海船" },
-      { n: "狂暴海", s: "分隔南北大陆，常年雷暴阻隔", k: "storm", cond: "极其凶险" },
-      { n: "苏尼亚海", s: "海盗四大天王争夺之所", k: "sunia", cond: "需出海许可或海盗盟约" },
-      { n: "神弃之地", s: "远古太阳神陨落遗留的无光死寂大陆", k: "forsaken", f: 1, cond: "现实航道已断绝" }
+    { n: "北大陆", s: "鲁恩、因蒂斯、弗萨克、费内波特与诸小国", k: "east" },
+    { n: "南大陆", s: "拜朗帝国故地，分东拜朗与西拜朗，北大陆列强殖民地", k: "south" },
+    { n: "西大陆", s: "迷雾深处的未知大陆，航线极少", k: "west" },
+    { n: "迷雾海", s: "北大陆以西的辽阔海域，岛屿与迷雾", k: "misty" },
+    { n: "苏尼亚海", s: "北大陆以东，海盗与群岛", k: "sunia" },
+    { n: "北海", s: "北大陆以北的寒冷海域", k: "northsea" },
+    { n: "极地海", s: "南大陆以南的冰封之海", k: "polarsea" },
+    { n: "狂暴海", s: "分隔南北大陆，常年雷暴", k: "storm" },
+    { n: "神弃之地", s: "远古太阳神陨落之地，无光死寂", k: "forsaken", f: 1, cond: "现实航道已断绝" }
   ]},
   east: { title: "北大陆", nodes: [
-      { n: "鲁恩王国", s: "工业之都贝克兰德与蒸汽齿轮之邦", k: "loen" },
-      { n: "因蒂斯共和国", s: "罗塞尔建立，奢华浪漫的艺术中心", k: "intis" },
-      { n: "弗萨克帝国", s: "极北冰雪帝国，战神信仰", k: "fesac" },
-      { n: "费内波特王国", s: "大地母神教会所在，农业富饶", k: "fenebote" },
-      { n: "伦堡", s: "北大陆小国，商贸与雇佣兵", k: "lunburg" },
-      { n: "马锡", s: "北大陆小国，山地与矿产", k: "massey" },
-      { n: "塞加尔", s: "北大陆小国，农业与港口", k: "segar" }
+    { n: "鲁恩王国", s: "东部强国，首都贝克兰德", k: "loen" },
+    { n: "因蒂斯共和国", s: "西部大国，首都特里尔", k: "intis" },
+    { n: "弗萨克帝国", s: "北部冰雪帝国，首都圣密隆，战神信仰", k: "fesac" },
+    { n: "费内波特王国", s: "南部王国，首都费内波特城，大地母神教会", k: "fenebote" },
+    { n: "塞加尔", s: "北大陆小国", k: "segar" },
+    { n: "马锡", s: "北大陆小国", k: "massey" },
+    { n: "伦堡", s: "北大陆小国", k: "lunburg" }
   ]},
   loen: { title: "鲁恩王国", nodes: [
-      { n: "廷根市", s: "大学之城，当前所在", k: "tingen" },
-      { n: "贝克兰德", s: "人口数百万的万都之都", k: "backlund", cond: "需购买蒸汽列车车票" },
-      { n: "普利兹港", s: "王国最大军港", k: "puliz" },
-      { n: "康斯顿", s: "鲁恩工业城市，铁路枢纽", k: "kangston" }
+    { n: "廷根市", s: "大学之城，霍伊大学与廷根大学所在", k: "tingen" },
+    { n: "贝克兰德", s: "鲁恩首都，万都之都", k: "backlund" },
+    { n: "普利兹港", s: "王国最大港口", k: "puliz" },
+    { n: "康斯顿", s: "鲁恩工业城市", k: "kangston" }
   ]},
   tingen: { title: "廷根市", nodes: [
-      { n: "佐特兰街", s: "黑荆棘安保公司", k: "zuotelan" },
-      { n: "铁十字街", s: "平民与赤贫底层聚居地下街", k: "tie" },
-      { n: "水手区", s: "码头工会、酒吧与恶棍走私之地", k: "matou" },
-      { n: "豪尔斯街区", s: "体面中产阶级居所", k: "hao" },
-      { n: "圣赛琳娜大教堂", s: "黑夜女神教会教区核心", k: "jiaotang", cond: "需值夜者或教会神职身份" }
+    { n: "西区", s: "铁十字街、水仙花街与市政广场", k: "t_west" },
+    { n: "东区", s: "弗拉德街与斯蒂芬斯街", k: "t_east" },
+    { n: "南区", s: "技术学校、钢铁联合厂与邮局", k: "t_south" },
+    { n: "北区", s: "佐特兰街、豪尔斯街与圣赛琳娜教堂", k: "t_north" },
+    { n: "金梧桐区", s: "德维尔图书馆与爵士宅邸", k: "t_gold" },
+    { n: "大学区", s: "廷根大学与霍伊大学", k: "t_uni" },
+    { n: "码头区", s: "恶龙酒吧与提利尔仓库", k: "t_dock" },
+    { n: "郊外", s: "圣数教堂与城郊宅邸", k: "t_out" }
+  ]},
+  t_west: { title: "西区", nodes: [
+    { n: "铁十字街", s: "莫雷蒂家旧宅与斯林面包房", k: "t_tie" },
+    { n: "水仙花街", s: "莫雷蒂家新宅与银冠餐厅", k: "t_xian" },
+    { n: "市政广场", s: "铁十字街与水仙花街交汇处", k: "t_square" },
+    { n: "西区济贫院", s: "旧教堂改建的济贫院", k: "t_poor" }
+  ]},
+  t_east: { title: "东区", nodes: [
+    { n: "弗拉德街", s: "罗森的民俗草药店", k: "t_frad" },
+    { n: "斯蒂芬斯街", s: "乔伊斯·迈尔家", k: "t_stephen" }
+  ]},
+  t_south: { title: "南区", nodes: [
+    { n: "廷根技术学校", s: "梅丽莎就读的学校", k: "t_tech" },
+    { n: "廷根市钢铁联合厂", s: "南区工厂", k: "t_steel" },
+    { n: "南区邮局", s: "技术学校附近", k: "t_post" }
+  ]},
+  t_north: { title: "北区", nodes: [
+    { n: "佐特兰街", s: "黑荆棘安保公司与射击俱乐部", k: "t_zuotelan" },
+    { n: "圣赛琳娜教堂", s: "黑夜女神教会廷根总部", k: "t_jiaotang" },
+    { n: "豪尔斯街", s: "中产街区与占卜俱乐部", k: "t_hao" },
+    { n: "拉斐尔墓园", s: "值夜者埋葬之地", k: "t_grave" }
+  ]},
+  t_gold: { title: "金梧桐区", nodes: [
+    { n: "德维尔图书馆", s: "德维尔爵士捐建", k: "t_lib" },
+    { n: "德维尔爵士宅", s: "花园与喷泉的宅邸", k: "t_devil" },
+    { n: "海岸线餐厅", s: "南方风味餐厅", k: "t_coast" }
+  ]},
+  t_uni: { title: "大学区", nodes: [
+    { n: "廷根大学", s: "霍伊河畔的大学", k: "t_uni1" },
+    { n: "霍伊大学", s: "克莱恩的母校", k: "t_uni2" }
+  ]},
+  t_dock: { title: "码头区", nodes: [
+    { n: "恶龙酒吧", s: "非凡物品地下交易市场", k: "t_dragon" },
+    { n: "提利尔仓库", s: "码头仓库", k: "t_warehouse" }
+  ]},
+  t_out: { title: "郊外", nodes: [
+    { n: "圣数教堂", s: "蒸汽与机械之神教会廷根总部", k: "t_holy" },
+    { n: "因斯据点", s: "城郊的暗红色烟囱宅邸", k: "t_ins" }
   ]},
   backlund: { title: "贝克兰德", nodes: [
-      { n: "乔伍德区", s: "中产与律师云集", k: "bd_qiao" },
-      { n: "东区", s: "充斥疾病、恶臭与绝望之地", k: "bd_east" },
-      { n: "西区", s: "贵族官邸与政府各部公馆", k: "bd_west", cond: "需体面着装与身份证明" },
-      { n: "希尔斯顿区", s: "各大报社、剧院与繁华商业街", k: "bd_hill" },
-      { n: "皇后区", s: "贵族与富人聚居，花园洋房", k: "bd_queen" },
-      { n: "北区", s: "中产住宅与教堂", k: "bd_north" },
-      { n: "桥区", s: "塔索克河两岸的码头与仓库", k: "bd_bridge" },
-      { n: "南区", s: "工厂、贫民与移民混杂", k: "bd_south" }
+    { n: "皇后区", s: "贵族与顶级富豪的居所", k: "bd_queen" },
+    { n: "西区", s: "政府各部与贵族官邸", k: "bd_west" },
+    { n: "希尔斯顿区", s: "报社、剧院与商业街", k: "bd_hill" },
+    { n: "北区", s: "圣塞缪尔教堂与中产住宅", k: "bd_north" },
+    { n: "乔伍德区", s: "克莱恩初到贝克兰德的落脚处", k: "bd_qiao" },
+    { n: "圣乔治区", s: "上流住宅与教会区", k: "bd_stgeorge" },
+    { n: "东区", s: "贫民与黑帮聚集，环境最差", k: "bd_east" },
+    { n: "贝克兰德桥区域", s: "塔索克河桥两岸的贫民区", k: "bd_bridge" },
+    { n: "工厂区", s: "工厂、工人与蒸汽机械", k: "bd_factory" },
+    { n: "码头区", s: "塔索克河沿岸码头与仓库", k: "bd_dock" },
+    { n: "南区", s: "中产住宅与商业街区", k: "bd_south" },
+    { n: "大桥南区", s: "贝克兰德大桥以南的街区", k: "bd_bridge_south" }
+  ]},
+  intis: { title: "因蒂斯共和国", nodes: [
+    { n: "特里尔", s: "因蒂斯首都，艺术与革命之城", k: "trier" }
+  ]},
+  fesac: { title: "弗萨克帝国", nodes: [
+    { n: "圣密隆", s: "弗萨克首都，战神教会所在", k: "shengmilong" }
+  ]},
+  fenebote: { title: "费内波特王国", nodes: [
+    { n: "费内波特城", s: "费内波特首都，大地母神教会所在", k: "fenebote_city" }
+  ]},
+  south: { title: "南大陆", nodes: [
+    { n: "东拜朗", s: "殖民港口与种植园", k: "e_byron" },
+    { n: "西拜朗", s: "内陆与旧帝国遗迹", k: "w_byron" }
   ]}
 };
 var curMapLv = 'world';
+var MAP_PARENT = {
+  east: 'world', south: 'world', west: 'world', misty: 'world', sunia: 'world',
+  northsea: 'world', polarsea: 'world', storm: 'world', forsaken: 'world',
+  loen: 'east', intis: 'east', fesac: 'east', fenebote: 'east', segar: 'east', massey: 'east', lunburg: 'east',
+  tingen: 'loen', backlund: 'loen', puliz: 'loen', kangston: 'loen',
+  t_west: 'tingen', t_east: 'tingen', t_south: 'tingen', t_north: 'tingen',
+  t_gold: 'tingen', t_uni: 'tingen', t_dock: 'tingen', t_out: 'tingen',
+  t_tie: 't_west', t_xian: 't_west', t_square: 't_west', t_poor: 't_west',
+  t_frad: 't_east', t_stephen: 't_east',
+  t_tech: 't_south', t_steel: 't_south', t_post: 't_south',
+  t_zuotelan: 't_north', t_jiaotang: 't_north', t_hao: 't_north', t_grave: 't_north',
+  t_lib: 't_gold', t_devil: 't_gold', t_coast: 't_gold',
+  t_uni1: 't_uni', t_uni2: 't_uni',
+  t_dragon: 't_dock', t_warehouse: 't_dock',
+  t_holy: 't_out', t_ins: 't_out',
+  bd_east: 'backlund', bd_bridge: 'backlund', bd_hill: 'backlund', bd_qiao: 'backlund',
+  bd_north: 'backlund', bd_queen: 'backlund', bd_west: 'backlund',
+  bd_stgeorge: 'backlund', bd_factory: 'backlund', bd_dock: 'backlund', bd_south: 'backlund', bd_bridge_south: 'backlund',
+  trier: 'intis', shengmilong: 'fesac', fenebote_city: 'fenebote',
+  e_byron: 'south', w_byron: 'south',
+  wfog: 'west', wbyron: 'west', wplain: 'west', wgod: 'west'
+};
+function mapPath(k) {
+  var out = [], guard = 0;
+  while (k && guard++ < 12) { out.unshift(k); k = MAP_PARENT[k]; }
+  return out;
+}
+
 
 /* ============================================================
    第十九部分 · 玩家指令执行（快照瘦身 + 容错 + 自动存档分离）
@@ -2336,7 +2529,7 @@ async function execute() {
 
   var userPrompt = '【当前时刻】' + state.time + ' · 地点: ' + state.location + ' · 资产: ' + JSON.stringify(state.currency) + '\n' +
     '【主角档案】' + state.meta.playerName + ' (' + state.meta.gender + ', ' + state.meta.age + '岁) 途径: ' + state.path + ' 序列: ' + state.seq + ' 消化度: ' + state.digest + '%\n' +
-    '【已掌握非凡能力】' + (state.abilities.map(function(a){return a.name;}).join('、') || '凡俗无能力') + '\n' +
+    '【已掌握非凡能力】' + (abilityText(state.abilities) || '凡俗无能力') + '\n' +
     '【量度状态】HP: ' + state.hp + '/' + state.maxHp + ' MP: ' + state.mp + '/' + state.maxMp + ' SAN: ' + state.sanity + '/' + state.maxSanity + '\n' +
     '【持有封印物】' + (state.sealed.join(', ') || '无') + '\n' +
     '【随身背包】' + (state.bag.map(function(b){return b.name+'x'+b.qty;}).join('、') || '空') + '\n' +
@@ -3082,6 +3275,7 @@ window.recalcPlayerMax = function () {
   state.mp = Math.min(state.maxMp, Math.max(0, Math.round(state.maxMp * ratio.mp)));
   state.sp = Math.min(state.maxSp, Math.max(0, Math.round(state.maxSp * ratio.sp)));
   state.sanity = Math.min(state.maxSanity, Math.max(0, Math.round(state.maxSanity * ratio.san)));
+  try { if (typeof window.syncOwnUniquenessV28 === 'function') window.syncOwnUniquenessV28(); } catch(e) {}
 };
 function calcMaxStats(path, seq) {
   var base = getSeqBase(seq);
@@ -4611,7 +4805,7 @@ function genItemDesc_v11(name) {
     var lastErr = null;
     for (var j = 0; j < targets.length; j++) {
       try {
-        var data = await unifiedRequest(targets[j], key, payload, 45000);
+        var data = await unifiedRequest(targets[j], key, payload, 120000);
         if (!data.choices || !data.choices[0] || !data.choices[0].message) throw new Error('返回结构异常');
         return data.choices[0].message.content;
       } catch (e) { lastErr = e; }
@@ -5278,15 +5472,21 @@ function genItemDesc_v11(name) {
     if (typeof mapData.west !== 'undefined') return true;
 
     var nodes = mapData.world.nodes;
-    var idx = nodes.findIndex(function(n){ return n.k === 'forsaken'; });
+    var existing = nodes.findIndex(function(n){ return n.k === 'west'; });
     var westNode = {
       n: "西大陆",
       s: "灰雾封印之下的神秘大陆，九大源质所在之处",
       k: "west",
       cond: "需序列2天使以上，并已与源质产生共鸣"
     };
-    if (idx >= 0) nodes.splice(idx, 0, westNode);
-    else nodes.push(westNode);
+    if (existing >= 0) {
+      nodes[existing].s = westNode.s;
+      nodes[existing].cond = westNode.cond;
+    } else {
+      var idx = nodes.findIndex(function(n){ return n.k === 'forsaken'; });
+      if (idx >= 0) nodes.splice(idx, 0, westNode);
+      else nodes.push(westNode);
+    }
 
     mapData.west = {
       title: "西大陆",
@@ -5307,14 +5507,10 @@ function genItemDesc_v11(name) {
       var b = document.getElementById('mapLvBtns');
       if (!b) return;
       var seqNum = getSeqNum_V19(state.seq);
-      var levels = [
-        { k: 'world', l: '大世界' },
-        { k: 'east', l: '北大陆' },
-        { k: 'loen', l: '鲁恩王国' },
-        { k: 'tingen', l: '廷根市' },
-        { k: 'backlund', l: '贝克兰德' }
-      ];
-      if (seqNum <= 2) levels.push({ k: 'west', l: '西大陆' });
+      var levels = mapPath(curMapLv).map(function(k){
+        return { k: k, l: (mapData[k] && mapData[k].title) || k };
+      });
+      if (seqNum <= 2 && curMapLv !== 'west') levels.push({ k: 'west', l: '西大陆' });
       b.innerHTML = '';
       levels.forEach(function(lv) {
         var s = document.createElement('span');
@@ -5347,7 +5543,8 @@ function genItemDesc_v11(name) {
 
           if (n.k === 'west') {
             if (seqNum > 2) {
-              el.innerHTML = '???<span class="sub" style="color:var(--tx-dim);font-style:italic;font-size:10px;display:block;margin-top:2px">未知的领域</span>';
+              el.innerHTML = n.n + '<span class="sub" style="display:block;margin-top:2px;font-size:10px">' + n.s + '</span>' +
+                '<div style="font-size:9px;color:var(--red);margin-top:2px">⚠️ 灵性不足，灰雾遮蔽</div>';
               el.onclick = function() { toast('你的灵性不足以窥探此处的真容。'); };
             } else if (!hasResonance) {
               el.innerHTML = n.n + '<span class="sub" style="display:block;margin-top:2px;font-size:10px">' + n.s + '</span>' +
@@ -5414,7 +5611,7 @@ function genItemDesc_v11(name) {
     if (Math.random() >= 0.05) return;
 
     var srcId = SOURCE_NAME_TO_ID_V19[srcName];
-    state.sourceResonance[srcName] = { at: Date.now(), tier: 'resonance', srcId: srcId };
+    state.sourceResonance[srcName] = { at: Date.now(), gameTime: state.time || '', tier: 'resonance', srcId: srcId };
     state._sourceRollCd = 30;
     state.maxMp = Math.round((state.maxMp || 10) * 1.5);
     state.maxSp = Math.round((state.maxSp || 100) * 1.5);
@@ -5482,9 +5679,10 @@ function genItemDesc_v11(name) {
       e.stopPropagation();
       e.preventDefault();
       var data = resonance[srcName];
-      var timeStr = data.at ? new Date(data.at).toLocaleString() : '未知';
+      var timeStr = data.gameTime || state.time || '未知';
       alert('【' + srcName + '】—— 已共鸣\n\n共鸣时间：' + timeStr +
-        '\n当前阶段：共鸣（1/3）\n\n你的灵性已与此源质产生微弱联系。\n未来的某一天，当你抵达序列1，或许能尝试"持有"它。');
+        '\n当前阶段：共鸣（1/3）\n\n你的灵性已与此源质产生微弱联系。\n未来的某一天，当你抵达序列1，或许能尝试"持有"它。' +
+        (typeof window.uniqStatusTextV28 === 'function' ? window.uniqStatusTextV28(srcName) : ''));
     }
   }, true);
 
@@ -5822,7 +6020,7 @@ function genItemDesc_v11(name) {
       d.className = 'rel-item';
       d.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center">' +
           '<div style="display:flex;align-items:center;gap:10px">' + avatarHTML(n, r.avatar) +
-            '<div><div class="rel-name">' + n + '</div><div style="font-size:10px;margin-top:2px;color:var(--tx-dim)"><span style="color:' + (h ? 'var(--green)' : 'var(--tx-dim)') + '">● ' + (r.status || '不在场') + '</span> · ' + seqHtml + '</div></div>' +
+            '<div><div class="rel-name">' + (angelKing(n, r) ? '<span class="angel-crown">👑</span>' : '') + n + '</div><div style="font-size:10px;margin-top:2px;color:var(--tx-dim)"><span style="color:' + (h ? 'var(--green)' : 'var(--tx-dim)') + '">● ' + (r.status || '不在场') + '</span> · ' + seqHtml + '</div></div>' +
           '</div><div style="font-size:11px;color:var(--bronze-dark);font-weight:700">' + (r.fav || '冷淡') + '</div></div>' +
         '<div class="fav-bar-container"><div class="fav-bar-bg"><div class="fav-bar-fill" style="width:' + favV + '%;"></div></div><span class="fav-bar-val">' + favV + '/100</span></div>';
       d.onclick = function() { openCharModal(n); };
@@ -6237,11 +6435,12 @@ function genItemDesc_v11(name) {
         var SOURCE_NAME = { sourceCastle:'源堡', chaosSea:'混沌海', motherNest:'母巢', eternalDark:'永暗之河', disorder:'失序之国', disaster:'灾祸之城', shadowWorld:'暗影世界', lightKey:'光之匙', knowledge:'知识荒野' };
         var resonance = state.sourceResonance || {};
         var held = state.sourceHeld || {};   // 阶段2：持有
-        var ascended = state.sourceAscended || {};  // 阶段3：成为旧日
+        var ascended = state.ascended || {};  // 阶段3：成为旧日
 
         SOURCE_ORDER.forEach(function(srcId, idx) {
           var card = grid.children[idx];
           if (!card) return;
+          card.style.animation = 'none';
           var srcName = SOURCE_NAME[srcId];
           if (ascended[srcName]) {
             // 阶段3：彩虹
@@ -6258,9 +6457,13 @@ function genItemDesc_v11(name) {
             card.style.boxShadow = '0 0 20px 5px rgba(168,85,247,0.85), 0 0 10px rgba(124,58,237,1)';
             card.style.borderColor = '#7c3aed';
           } else if (resonance[srcName]) {
-            // 阶段1：微光（V19 已做）
-            card.style.boxShadow = '0 0 14px 3px rgba(180,160,255,0.7), 0 0 6px rgba(140,120,255,0.9)';
-            card.style.borderColor = '#a78bfa';
+            // 阶段1：微光（加强）
+            card.style.background = 'linear-gradient(135deg,#312e81,#4c1d95)';
+            card.style.color = '#f5f3ff';
+            card.style.borderColor = '#8b5cf6';
+            card.style.borderWidth = '2px';
+            card.style.boxShadow = '0 0 22px 7px rgba(139,92,246,0.9), inset 0 0 12px rgba(196,181,253,0.35)';
+            card.style.animation = 'v25glow 2s ease-in-out infinite';
           }
         });
       } catch(e) { console.warn('[V25] source card state err', e); }
@@ -6271,7 +6474,8 @@ function genItemDesc_v11(name) {
     if (!document.getElementById('v25SrcRainbow')) {
       var st = document.createElement('style');
       st.id = 'v25SrcRainbow';
-      st.textContent = '@keyframes v25rainbow{0%{background-position:0% 50%}100%{background-position:400% 50%}}';
+      st.textContent = '@keyframes v25rainbow{0%{background-position:0% 50%}100%{background-position:400% 50%}}' +
+        '@keyframes v25glow{0%,100%{box-shadow:0 0 10px 3px rgba(99,102,241,0.55)}50%{box-shadow:0 0 26px 9px rgba(139,92,246,0.95)}}';
       document.head.appendChild(st);
     }
   }
@@ -6668,7 +6872,7 @@ function genItemDesc_v11(name) {
 
     if (roll < 0.4) {
       // 持有成功
-      state.sourceHeld[srcName] = { at: Date.now(), tier: 'held' };
+      state.sourceHeld[srcName] = { at: Date.now(), gameTime: state.time || '', tier: 'held' };
       state._pollutionDebt = 0;
       state.maxHp = Math.round((state.maxHp || 100) * 1.3);
       state.maxMp = Math.round((state.maxMp || 10) * 2);
@@ -7003,7 +7207,7 @@ function genItemDesc_v11(name) {
       if (t === 'overview') {
         var dynPos = getPositionBySeq_v27(f.joined, facName);
         var h = '<div class="row"><span>当前会内身份</span><span class="v">' + dynPos + '</span></div>' +
-          '<div class="row"><span>序列位阶</span><span class="v ' + (typeof seqClass === 'function' ? seqClass(state.seq) : '') + '">' + (state.seq || '凡俗') + '</span></div>' +
+          '<div class="row"><span>序列位阶</span><span class="v ' + (playerAngelKing() ? 'seq-天使王' : (typeof seqClass === 'function' ? seqClass(state.seq) : '')) + '">' + (state.seq || '凡俗') + (playerAngelKing() ? ' 👑' : '') + '</span></div>' +
           '<div class="row"><span>功勋与贡献点</span><span class="v gold">' + (f.contrib || 0) + ' 点</span></div>' +
           '<div class="row"><span>接纳状态</span><span class="v" style="color:' + (f.joined ? 'var(--green)' : 'var(--tx-dim)') + '">' + (f.joined ? '正式成员' : '尚未吸纳') + '</span></div>' +
           '<div style="margin-top:12px;font-size:11px;color:var(--tx-sub);line-height:1.8;background:#f5efe2;padding:12px;border-radius:6px">' + f.desc + '</div>';
@@ -7286,70 +7490,57 @@ function genItemDesc_v11(name) {
   // 三、出行系统（仅陆地）
   // ============================================================
   // 只保留陆地节点——海洋（迷雾海、狂暴海、苏尼亚海）、南大陆、西大陆、神弃之地都不列
-  var PATHS_v27bd = {
-    east:     ['world','east'],
-    loen:     ['world','east','loen'],
-    intis:    ['world','east','intis'],
-    fesac:    ['world','east','fesac'],
-    fenebote: ['world','east','fenebote'],
-    tingen:   ['world','east','loen','tingen'],
-    backlund: ['world','east','loen','backlund'],
-    puliz:    ['world','east','loen','puliz'],
-    zuotelan: ['world','east','loen','tingen','zuotelan'],
-    tie:      ['world','east','loen','tingen','tie'],
-    matou:    ['world','east','loen','tingen','matou'],
-    hao:      ['world','east','loen','tingen','hao'],
-    jiaotang: ['world','east','loen','tingen','jiaotang'],
-    bd_qiao:  ['world','east','loen','backlund','bd_qiao'],
-    bd_east:  ['world','east','loen','backlund','bd_east'],
-    bd_west:  ['world','east','loen','backlund','bd_west'],
-    bd_hill:  ['world','east','loen','backlund','bd_hill']
-  };
+  var PATHS_v27bd = {};
+  Object.keys(MAP_PARENT).forEach(function(k) {
+    if (k === 'world') return;
+    var arr = [], x = k, guard = 0;
+    while (x && x !== 'world' && guard++ < 12) { arr.unshift(x); x = MAP_PARENT[x]; }
+    if (!arr.length || arr[0] !== 'east') return;
+    PATHS_v27bd[k] = ['world'].concat(arr);
+  });
 
-  var NAME_TO_K = [
-    { name: '圣赛琳娜大教堂', k: 'jiaotang' },
-    { name: '圣赛琳娜', k: 'jiaotang' },
-    { name: '豪尔斯街区', k: 'hao' },
-    { name: '豪尔斯', k: 'hao' },
-    { name: '希尔斯顿区', k: 'bd_hill' },
-    { name: '希尔斯顿', k: 'bd_hill' },
-    { name: '乔伍德区', k: 'bd_qiao' },
-    { name: '乔伍德', k: 'bd_qiao' },
-    { name: '贝克兰德·东区', k: 'bd_east' },
-    { name: '贝克兰德·西区', k: 'bd_west' },
-    { name: '佐特兰街', k: 'zuotelan' },
-    { name: '铁十字街', k: 'tie' },
-    { name: '水手区', k: 'matou' },
-    { name: '廷根市', k: 'tingen' },
-    { name: '廷根', k: 'tingen' },
-    { name: '贝克兰德', k: 'backlund' },
-    { name: '普利兹港', k: 'puliz' },
-    { name: '鲁恩王国', k: 'loen' },
-    { name: '鲁恩', k: 'loen' },
-    { name: '因蒂斯共和国', k: 'intis' },
-    { name: '因蒂斯', k: 'intis' },
-    { name: '弗萨克帝国', k: 'fesac' },
-    { name: '弗萨克', k: 'fesac' },
-    { name: '费内波特王国', k: 'fenebote' },
-    { name: '费内波特', k: 'fenebote' },
-    { name: '北大陆', k: 'east' }
-  ];
+  var NAME_TO_K = [];
+  function _mapNames(k) {
+    var labels = mapPath(k).map(function(x) {
+      return (mapData[x] && mapData[x].title) || '';
+    }).filter(function(x) { return x && x !== '世界格局'; });
+    var out = [];
+    for (var n = Math.min(4, labels.length); n >= 2; n--) {
+      out.push({ name: labels.slice(-n).join('·'), k: k });
+    }
+    if (labels.length) out.push({ name: labels[labels.length - 1], k: k });
+    return out;
+  }
+  Object.keys(mapData).forEach(function(k) {
+    _mapNames(k).forEach(function(x) { NAME_TO_K.push(x); });
+    (mapData[k] && mapData[k].nodes || []).forEach(function(n) {
+      if (!n || !n.k) return;
+      var parent = _mapNames(k).filter(function(x) { return x.name.indexOf('·') >= 0; })[0];
+      if (parent) NAME_TO_K.push({ name: parent.name + '·' + n.n, k: n.k });
+      NAME_TO_K.push({ name: n.n, k: n.k });
+    });
+  });
 
-  var K_LABEL = {
-    east:'北大陆',
-    loen:'鲁恩王国', intis:'因蒂斯共和国', fesac:'弗萨克帝国', fenebote:'费内波特王国',
-    tingen:'廷根市', backlund:'贝克兰德', puliz:'普利兹港',
-    zuotelan:'佐特兰街', tie:'铁十字街', matou:'水手区', hao:'豪尔斯街区', jiaotang:'圣赛琳娜大教堂',
-    bd_qiao:'乔伍德区', bd_east:'贝克兰德·东区', bd_west:'贝克兰德·西区', bd_hill:'希尔斯顿区',
-    bd_queen:'皇后区', bd_north:'北区', bd_bridge:'桥区', bd_south:'南区',
-    lunburg:'伦堡', massey:'马锡', segar:'塞加尔', kangston:'康斯顿'
-  };
+  var K_LABEL = {};
+  Object.keys(mapData).forEach(function(k) {
+    K_LABEL[k] = (mapData[k] && mapData[k].title) || k;
+  });
+  Object.keys(mapData).forEach(function(k) {
+    (mapData[k] && mapData[k].nodes || []).forEach(function(n) {
+      if (n && n.k) K_LABEL[n.k] = n.n;
+    });
+  });
+
 
   function detectK() {
     var loc = state.location || '';
     var sorted = NAME_TO_K.slice().sort(function(a,b){ return b.name.length - a.name.length; });
     for (var i = 0; i < sorted.length; i++) {
       if (loc.indexOf(sorted[i].name) >= 0) return sorted[i].k;
+    }
+    var alias = { '水手区': 't_dock', '桥区': 'bd_bridge', '豪尔斯街区': 't_hao', '圣赛琳娜大教堂': 't_jiaotang' };
+    for (var a in alias) {
+      if (loc.indexOf(a) >= 0) return alias[a];
     }
     return null;
   }
@@ -7366,7 +7557,8 @@ function genItemDesc_v11(name) {
     var p1 = PATHS_v27bd[fromK], p2 = PATHS_v27bd[toK];
     if (!p1 || !p2) return null;
     var lca = lcaDepth(p1, p2);
-    if (lca >= 3) return { days: 0.1, cost: 0, tier: '同城' };
+    if (lca >= 4) return { days: 0.1, cost: 0, tier: '同区' };
+    if (lca === 3) return { days: 0.3, cost: 4, tier: '同城' };
     if (lca === 2) return { days: 2, cost: 100, tier: '同国' };
     if (lca === 1) return { days: 6, cost: 960, tier: '跨国' };
     return { days: 20, cost: 1200, tier: '跨大陆' };
@@ -7437,10 +7629,16 @@ function genItemDesc_v11(name) {
     if (!curK) return [];
     var result = [];
     Object.keys(PATHS_v27bd).forEach(function(k) {
-      if (k === curK) return;
+      if (k === curK || k === 'east') return;
       var t = calcTravel(curK, k);
       if (!t) return;
-      result.push({ k: k, label: K_LABEL[k] || k, days: t.days, cost: t.cost, tier: t.tier });
+      var p = PATHS_v27bd[k] || [];
+      var labels = p.slice(1).map(function(x) { return K_LABEL[x] || x; });
+      var full;
+      if (p.length >= 6) full = labels.slice(-3).join('·');
+      else if (p.length === 5) full = labels.slice(-2).join('·');
+      else full = labels.slice(-1)[0] || K_LABEL[k] || k;
+      result.push({ k: k, label: K_LABEL[k] || k, full: full, days: t.days, cost: t.cost, tier: t.tier });
     });
     result.sort(function(a, b) { return a.days - b.days; });
     return result;
@@ -7557,7 +7755,7 @@ function genItemDesc_v11(name) {
         m.remove();
         if (!spend(normalCost)) { if (typeof toast === 'function') toast('❌ 钱不够'); return; }
         advanceDays(normalDays);
-        state.location = d.label;
+        state.location = d.full || d.label;
         if (typeof toast === 'function') toast('🚂 抵达【' + d.label + '】');
         if (typeof addEntry === 'function') addEntry('行旅', 'system', '你前往【' + d.label + '】。（耗时 ' + normalDaysStr + '，花费 ' + normalCostStr + '）');
         try { renderUI(); } catch(e){}
@@ -7580,7 +7778,7 @@ function genItemDesc_v11(name) {
         state.mp = Math.max(0, (state.mp||0) - 30);
         state.sp = Math.max(0, (state.sp||0) - 20);
         advanceDays(spiritDays);
-        state.location = d.label;
+        state.location = d.full || d.label;
         if (typeof toast === 'function') toast('🌌 穿越灵界抵达【' + d.label + '】');
         if (typeof addEntry === 'function') addEntry('灵界穿梭', 'system', '你沉入灵界，抵达【' + d.label + '】。（耗时 ' + spiritDaysStr + '，MP -30，SP -20）');
         try { renderUI(); } catch(e){}
@@ -7707,11 +7905,23 @@ function genItemDesc_v11(name) {
   if (typeof state.uniqueness === 'undefined') state.uniqueness = {};        // { 源质名: [碎片1, 碎片2, ...] }
   if (typeof state.ascended === 'undefined') state.ascended = {};             // { 源质名: { at: 时间戳 } }
 
-  /* 每个源质需要的唯一性碎片数 = 它包含的途径数（原著） */
-  var FRAGMENTS_BY_SOURCE = {
-    '源堡': 3, '混沌海': 5, '母巢': 2, '永暗之河': 3,
-    '失序之国': 2, '灾祸之城': 2, '暗影世界': 2, '光之匙': 1, '知识荒野': 2
+  /* 每个源质对应的序列0唯一性（原著） */
+  var SOURCE_UNIQUENESS = {
+    '源堡': ['愚者', '门', '错误'],
+    '混沌海': ['空想家', '暴君', '太阳', '白塔', '倒吊人'],
+    '母巢': ['母亲', '月亮'],
+    '永暗之河': ['黑暗', '黄昏巨人', '死神'],
+    '失序之国': ['黑皇帝', '审判者'],
+    '灾祸之城': ['魔女', '红祭司'],
+    '暗影世界': ['深渊', '被缚者'],
+    '光之匙': ['命运之轮'],
+    '知识荒野': ['完美者', '隐者']
   };
+  /* 需要几枚 = 该源质包含的途径数 */
+  var FRAGMENTS_BY_SOURCE = {};
+  Object.keys(SOURCE_UNIQUENESS).forEach(function(k) {
+    FRAGMENTS_BY_SOURCE[k] = SOURCE_UNIQUENESS[k].length;
+  });
   function fragmentsNeeded(srcName){
     var n = FRAGMENTS_BY_SOURCE[srcName];
     return (typeof n === 'number' && n > 0) ? n : 3;
@@ -7788,7 +7998,7 @@ function genItemDesc_v11(name) {
 
     // 记录
     if (!state.ascended) state.ascended = {};
-    state.ascended[srcName] = { at: Date.now() };
+    state.ascended[srcName] = { at: Date.now(), gameTime: state.time || '' };
 
     if (typeof toast === 'function') toast('🌌 你已登临旧日：【' + srcName + '】');
     if (typeof addEntry === 'function') {
@@ -7805,6 +8015,151 @@ function genItemDesc_v11(name) {
     try { if (typeof renderUI === 'function') renderUI(); } catch(e) {}
     return true;
   }
+  // ============================================================
+  // 3.1 唯一性格子（挂在九张源质卡上）+ 序列0自动补自身唯一性
+  // ============================================================
+  var SOURCE_ORDER_V28 = ['sourceCastle','chaosSea','motherNest','eternalDark','disorder','disaster','shadowWorld','lightKey','knowledge'];
+  var SOURCE_ID_NAME_V28 = {
+    sourceCastle:'源堡', chaosSea:'混沌海', motherNest:'母巢',
+    eternalDark:'永暗之河', disorder:'失序之国', disaster:'灾祸之城',
+    shadowWorld:'暗影世界', lightKey:'光之匙', knowledge:'知识荒野'
+  };
+  var PATH_TO_UNIQ_V28 = {
+    '占卜家':'愚者','学徒':'门','偷盗者':'错误',
+    '观众':'空想家','水手':'暴君','歌颂者':'太阳','阅读者':'白塔','秘祈人':'倒吊人',
+    '不眠者':'黑暗','战士':'黄昏巨人','收尸人':'死神',
+    '耕种者':'母亲','药师':'月亮',
+    '律师':'黑皇帝','仲裁人':'审判者',
+    '刺客':'魔女','猎人':'红祭司',
+    '罪犯':'深渊','囚犯':'被缚者',
+    '怪物':'命运之轮',
+    '通识者':'完美者','窥秘人':'隐者'
+  };
+  Object.keys(PATH_TO_UNIQ_V28).forEach(function(k) {
+    PATH_TO_UNIQ_V28[PATH_TO_UNIQ_V28[k]] = PATH_TO_UNIQ_V28[k];
+  });
+  var UNIQ_TO_SOURCE_V28 = {};
+  Object.keys(SOURCE_UNIQUENESS).forEach(function(src) {
+    SOURCE_UNIQUENESS[src].forEach(function(u) { UNIQ_TO_SOURCE_V28[u] = src; });
+  });
+
+  function uniqStatusTextV28(srcName) {
+    var names = SOURCE_UNIQUENESS[srcName];
+    if (!names) return '';
+    var raw = (state.uniqueness && state.uniqueness[srcName]) || [];
+    var owned = raw.filter(function(n) { return names.indexOf(n) >= 0; });
+    var legacy = raw.length - owned.length;
+    var out = '\n\n唯一性 ' + raw.length + '/' + names.length;
+    names.forEach(function(n) {
+      out += '\n' + (owned.indexOf(n) >= 0 ? '[✓] ' : '[  ] ') + n;
+    });
+    if (legacy > 0) out += '\n[?] 旧档非标准碎片 ×' + legacy;
+    return out;
+  }
+  window.uniqStatusTextV28 = uniqStatusTextV28;
+
+  function syncOwnUniquenessV28() {
+    if (getSeqNum_v28(state.seq) !== 0) return false;
+    var p = String(state.path || '').trim();
+    var uniq = PATH_TO_UNIQ_V28[p];
+    if (!uniq) {
+      for (var k in PATH_TO_UNIQ_V28) {
+        if (k.length > 1 && p.indexOf(k) >= 0) { uniq = PATH_TO_UNIQ_V28[k]; break; }
+      }
+    }
+    if (!uniq) return false;
+    var src = UNIQ_TO_SOURCE_V28[uniq];
+    if (!src) return false;
+    if (!state.uniqueness) state.uniqueness = {};
+    if (!state.uniqueness[src]) state.uniqueness[src] = [];
+    if (state.uniqueness[src].indexOf(uniq) >= 0) return false;
+    state.uniqueness[src].push(uniq);
+    if (typeof toast === 'function') toast('🌌 序列0权柄归位：【' + uniq + '】唯一性');
+    if (typeof addEntry === 'function') {
+      addEntry('唯一性归位', 'system',
+        '你成为【' + state.seq + '】，自身途径的序列0唯一性【' + uniq + '】自动归于你。');
+    }
+    if (!state._v28InApplyAI && typeof addStructuredMemory === 'function') {
+      try {
+        addStructuredMemory({
+          time: state.time || '',
+          location: state.location || '',
+          npcs: [], items: [],
+          events: ['【唯一性归位】' + src + '·' + uniq],
+          importance: 5,
+          rawText: '玩家成为' + (state.seq || '序列0') + '，自身途径的序列0唯一性【' + uniq + '】自动归位。',
+          action: '唯一性归位'
+        });
+      } catch(e) { console.warn('[V28] 唯一性记忆写入失败', e); }
+    }
+    try { renderUniqCardsV28(); } catch(e) {}
+    return true;
+  }
+  window.syncOwnUniquenessV28 = syncOwnUniquenessV28;
+
+  function renderUniqCardsV28() {
+    var grid = document.getElementById('sourceGrid');
+    if (!grid) return;
+    SOURCE_ORDER_V28.forEach(function(srcId, idx) {
+      var card = grid.children[idx];
+      if (!card) return;
+      var src = SOURCE_ID_NAME_V28[srcId];
+      var names = SOURCE_UNIQUENESS[src] || [];
+      var raw = (state.uniqueness && state.uniqueness[src]) || [];
+      var owned = raw.filter(function(n) { return names.indexOf(n) >= 0; });
+      var legacy = raw.length - owned.length;
+      var wrap = card.querySelector('.sq-u');
+      if (!wrap) {
+        wrap = document.createElement('div');
+        wrap.className = 'sq-u';
+        card.appendChild(wrap);
+      }
+      var html = '';
+      names.forEach(function(n) {
+        var has = owned.indexOf(n) >= 0;
+        html += '<span class="sq-u-dot ' + (has ? 'on' : '') + '" title="' + n + (has ? '（已获得）' : '（未获得）') + '"></span>';
+      });
+      if (legacy > 0) html += '<span class="sq-u-c" title="旧档非标准碎片，仍计入数量">+' + legacy + '</span>';
+      html += '<span class="sq-u-c">' + raw.length + '/' + names.length + '</span>';
+      wrap.innerHTML = html;
+      wrap.title = '唯一性：' + names.map(function(n) {
+        return n + (owned.indexOf(n) >= 0 ? '✓' : '○');
+      }).join(' ');
+    });
+  }
+
+  function uniquenessPromptV28() {
+    var lines = [];
+    Object.keys(SOURCE_UNIQUENESS).forEach(function(src) {
+      var names = SOURCE_UNIQUENESS[src];
+      var raw = (state.uniqueness && state.uniqueness[src]) || [];
+      var owned = raw.filter(function(n) { return names.indexOf(n) >= 0; });
+      var missing = names.filter(function(n) { return owned.indexOf(n) < 0; });
+      lines.push('· ' + src + ' ' + raw.length + '/' + names.length +
+        '（已得：' + (owned.join('、') || '无') +
+        '；未得：' + (missing.join('、') || '无') + '）');
+    });
+    return '\n\n【唯一性收集·实时】\n' + lines.join('\n') +
+      '\n- 玩家自身途径的序列0唯一性会在成为序列0时自动归位，不要重复发放；其余未得唯一性可通过剧情获取。' +
+      '\n- 光之匙只有“命运之轮”一枚，玩家成为序列0即自动集齐。';
+  }
+
+  if (typeof window.callAPI === 'function' && !window.callAPI.__v28uniqPrompt) {
+    var _origCallAPI_v28uniq = window.callAPI;
+    window.callAPI = async function(msgs, c) {
+      try {
+        var txt = uniquenessPromptV28();
+        if (txt && msgs && msgs.length) {
+          for (var i = msgs.length - 1; i >= 0; i--) {
+            if (msgs[i].role === 'user') { msgs[i].content += txt; break; }
+          }
+        }
+      } catch(e) { console.warn('[V28] uniq prompt err', e); }
+      return _origCallAPI_v28uniq.apply(this, arguments);
+    };
+    window.callAPI.__v28uniqPrompt = true;
+  }
+
   window.ascendToOldOne_v28 = ascendToOldOne_v28;
 
   // ============================================================
@@ -7859,6 +8214,9 @@ function genItemDesc_v11(name) {
           }
         });
 
+        try { syncOwnUniquenessV28(); } catch(e) {}
+        try { renderUniqCardsV28(); } catch(e) {}
+
         // 检查是否有可登临的
         var ascendBox = document.getElementById('v28AscendBox');
         if (ascendBox) ascendBox.remove();
@@ -7888,7 +8246,11 @@ function genItemDesc_v11(name) {
   if (!document.getElementById('v28Pulse')) {
     var st = document.createElement('style');
     st.id = 'v28Pulse';
-    st.textContent = '@keyframes v28pulse{0%,100%{box-shadow:0 0 12px rgba(217,119,6,0.5)}50%{box-shadow:0 0 24px rgba(217,119,6,0.9)}}';
+    st.textContent = '@keyframes v28pulse{0%,100%{box-shadow:0 0 12px rgba(217,119,6,0.5)}50%{box-shadow:0 0 24px rgba(217,119,6,0.9)}}' +
+      '.sq-u{display:flex;align-items:center;justify-content:center;gap:2px;margin-top:4px;flex-wrap:wrap}' +
+      '.sq-u-dot{width:7px;height:7px;border:1px solid #c9b99a;border-radius:2px;background:#fffdf8;display:inline-block}' +
+      '.sq-u-dot.on{background:#b45309;border-color:#92400e;box-shadow:0 0 4px rgba(180,83,9,.6)}' +
+      '.sq-u-c{font-size:8px;color:var(--tx-dim);margin-left:1px}';
     document.head.appendChild(st);
   }
 
@@ -7898,14 +8260,27 @@ function genItemDesc_v11(name) {
   if (typeof window.applyAI === 'function' && !window.applyAI.__v28Hooked) {
     var origApply_v28 = window.applyAI;
     window.applyAI = function(data, action) {
+      state._v28InApplyAI = true;
+      try {
       var result = origApply_v28.apply(this, arguments);
       try {
         if (data && data.stateChanges && Array.isArray(data.stateChanges.addUniqueness)) {
           data.stateChanges.addUniqueness.forEach(function(item) {
             if (!item) return;
             var srcName = item.source || item.name || '';
-            var fragName = item.fragment || '唯一性碎片';
+            var fragName = item.fragment || '';
             if (!srcName) return;
+            var allowed = SOURCE_UNIQUENESS[srcName];
+            if (!allowed) {
+              console.warn('[V28] 未知源质，已忽略：', srcName);
+              return;
+            }
+            var fragKey = String(fragName).replace(/唯一性/g, '').replace(/^的|的$/g, '').trim();
+            if (allowed.indexOf(fragKey) < 0) {
+              console.warn('[V28] 非法唯一性碎片，已忽略：', srcName, fragName);
+              return;
+            }
+            fragName = fragKey;
             if (!state.uniqueness) state.uniqueness = {};
             if (!state.uniqueness[srcName]) state.uniqueness[srcName] = [];
             // 去重
@@ -7919,7 +8294,12 @@ function genItemDesc_v11(name) {
           });
         }
       } catch(e) { console.warn('[V28] addUniqueness err', e); }
+      try { if (typeof window.syncOwnUniquenessV28 === 'function') window.syncOwnUniquenessV28(); } catch(e) {}
+      try { renderUniqCardsV28(); } catch(e) {}
       return result;
+      } finally {
+        state._v28InApplyAI = false;
+      }
     };
     window.applyAI.__v28Hooked = true;
   }
@@ -7962,11 +8342,23 @@ function genItemDesc_v11(name) {
 
 【V28 唯一性碎片】
 - 当玩家抵达序列0后，若已持有对应源质，唯一性碎片便是登临旧日的最后一步。
-- 每次玩家通过剧情获得"与源质相关的关键物/概念/权柄"时，在 stateChanges 中汇报：
-  · addUniqueness: [{ "source": "源堡", "fragment": "灰雾之核" }]
+- 只有当玩家真正取得/承载某条途径的【序列0唯一性】时，才在 stateChanges 中汇报：
+  · addUniqueness: [{ "source": "源堡", "fragment": "愚者" }]
 - source 必须是玩家已持有的源质名称。
-- fragment 应是与该源质高度相关的独特名称（如"灰雾之核""造物主残念""时空之眼"）。
-- 总共需要 3 枚碎片，每枚只能获得一次。
+- fragment 必须是该源质对应途径的【序列0唯一性】名称，只能从下表选，不得自造物品名：
+  · 源堡：愚者、门、错误
+  · 混沌海：空想家、暴君、太阳、白塔、倒吊人
+  · 母巢：母亲、月亮
+  · 永暗之河：黑暗、黄昏巨人、死神
+  · 失序之国：黑皇帝、审判者
+  · 灾祸之城：魔女、红祭司
+  · 暗影世界：深渊、被缚者
+  · 光之匙：命运之轮
+  · 知识荒野：完美者、隐者
+- 所需碎片数 = 对应途径数（源堡3、混沌海5、母巢2、永暗之河3、失序之国2、灾祸之城2、暗影世界2、光之匙1、知识荒野2）。每枚只能获得一次。
+- 禁止使用“灰雾之核”“时空之眼”“造物主残念”这类自造名称。
+- 玩家抵达序列0时，自身途径的序列0唯一性会自动归位，不要重复发放；其余唯一性仍需通过剧情获取。
+- 光之匙只有“命运之轮”一枚，玩家成为序列0即自动集齐。
 - 不要随意发放——只有剧情重大转折、击败强敌、获得上古遗物、完成关键仪式时才给。`;
     console.log('[V28] GM_SYSTEM 已追加唯一性碎片说明');
   }
@@ -8095,7 +8487,9 @@ function genItemDesc_v11(name) {
       try {
         if (d && d.system) {
           state.uniqueness = d.system.uniqueness || {};
-          state.ascended = d.system.ascended || {};
+          state.ascended = d.system.ascended || d.system.sourceAscended || {};
+          try { if (typeof window.syncOwnUniquenessV28 === 'function') window.syncOwnUniquenessV28(); } catch(e) {}
+          try { renderUniqCardsV28(); } catch(e) {}
         } else {
           state.uniqueness = {};
           state.ascended = {};
@@ -9306,8 +9700,8 @@ function genItemDesc_v11(name) {
     L.push('');
     L.push('▎玩家位格与数值');
     L.push('· 途径：' + (state.path || '凡俗') + ' · 序列：' + (state.seq || '凡俗') + ' · 消化度：' + (state.digest || 0) + '%');
-    var abs = (state.abilities || []).map(function(a){ return a.name || a; }).filter(Boolean);
-    if (abs.length) L.push('· 能力：' + abs.join('、'));
+    var abs = abilityText(state.abilities);
+    if (abs) L.push('· 能力：' + abs);
     L.push('· HP ' + state.hp + '/' + state.maxHp +
            ' · MP ' + state.mp + '/' + state.maxMp +
            ' · SP ' + state.sp + '/' + state.maxSp +
@@ -9393,12 +9787,14 @@ function genItemDesc_v11(name) {
       npcList.forEach(function(n){
         var r = relations[n] || {};
         L.push('');
+        var __covered = (state._lastRelatedNpcs || []).indexOf(n) >= 0;
+        if (__covered) { L.push('· ' + n + '：档案与记忆见本轮【块2】'); return; }
         L.push('【' + n + '】');
         var line1 = [];
         if (r.gender) line1.push(r.gender);
         if (r.age) line1.push(r.age);
         if (r.path) line1.push(r.path);
-        if (r.seq) line1.push(r.seq);
+        if (r.seq) line1.push(r.seq + (angelKing(n, r) ? '（天使之王）' : ''));
         if (line1.length) L.push('  · ' + line1.join(' · '));
         if (r.identity) L.push('  · 身份：' + r.identity);
         if (r.faction) L.push('  · 势力：' + r.faction);
@@ -9411,16 +9807,17 @@ function genItemDesc_v11(name) {
         if (r.thought) L.push('  · 心声：' + String(r.thought).slice(0, 80));
         if (r.actual && r.actual.goal) L.push('  · 真实目标：' + r.actual.goal);
         if (Array.isArray(r.bag) && r.bag.length) L.push('  · 随身物品：' + fmtBag(r.bag));
-        if (Array.isArray(r._coreMemory) && r._coreMemory.length) {
-          var cores = r._coreMemory.slice(-12);
+
+        if (!__covered && Array.isArray(r._coreMemory) && r._coreMemory.length) {
+          var cores = r._coreMemory.slice(-16);
           L.push('  · 核心记忆（' + r._coreMemory.length + ' 条，显示最近 ' + cores.length + '）：');
           cores.forEach(function(m){
             var ap = m.aboutPlayer ? '[关于玩家] ' : '';
             L.push('      ⚓ R' + (m.turn||'?') + ' ' + ap + String(m.event||'').slice(0, 100));
           });
         }
-        if (Array.isArray(r.memory) && r.memory.length) {
-          var mems = r.memory.slice(-10);
+        if (!__covered && Array.isArray(r.memory) && r.memory.length) {
+          var mems = r.memory.slice(-12);
           L.push('  · 记忆（' + r.memory.length + ' 条，显示最近 ' + mems.length + '）：');
           mems.forEach(function(m){
             var emo = m.emotion ? '（' + m.emotion + '）' : '';
@@ -9431,12 +9828,29 @@ function genItemDesc_v11(name) {
       });
     }
 
+    // 20 位以外的 NPC：一行摘要
+    var __allNpc = Object.keys(relations).filter(function(n){ return !relations[n]._background; });
+    var __extraNpc = __allNpc.filter(function(n){ return npcList.indexOf(n) < 0; });
+    if (__extraNpc.length) {
+      L.push('');
+      L.push('▎其他关系人（摘要，共 ' + __extraNpc.length + ' 位）');
+      __extraNpc.slice(0, 30).forEach(function(n){
+        var r = relations[n] || {};
+        var bits = [];
+        if (r.identity) bits.push(String(r.identity).slice(0, 30));
+        if (r.path) bits.push(r.path + (r.seq ? ' ' + r.seq : ''));
+        if (r.relationToPlayer) bits.push('与玩家：' + r.relationToPlayer);
+        if (r.location) bits.push('位置：' + String(r.location).slice(0, 30));
+        L.push('· ' + n + (bits.length ? '：' + bits.join(' · ') : ''));
+      });
+    }
+
     // ── 世界动态 ──
     L.push('');
     L.push('▎世界动态');
     L.push('· 时间：' + (state.time || '?') + ' · 地点：' + (state.location || '?') + ' · 天气：' + (state.weather || '?'));
     if (Array.isArray(state.worldEvents) && state.worldEvents.length) {
-      var recent = state.worldEvents.slice(-5);
+      var recent = state.worldEvents.slice(-10);
       L.push('· 近期事件：');
       recent.forEach(function(e){
         L.push('    - ' + (e.time||'?') + ' [' + (e.type||'?') + '] ' + String(e.desc||'').slice(0, 100));
@@ -9445,9 +9859,9 @@ function genItemDesc_v11(name) {
 
     // ── 已知地图 ──
     try {
-      var knownLocs = ['廷根市：佐特兰街、铁十字街、水手区、豪尔斯街区、圣赛琳娜大教堂',
-                       '贝克兰德：乔伍德区、东区、西区、希尔斯顿区',
-                       '鲁恩王国：廷根市、贝克兰德、普利兹港'];
+      var knownLocs = ['廷根市：西区、东区、南区、北区、金梧桐区、大学区、码头区、郊外',
+                       '贝克兰德：皇后区、西区、希尔斯顿区、北区、乔伍德区、圣乔治区、东区、贝克兰德桥区域、工厂区、码头区、南区、大桥南区',
+                       '鲁恩王国：廷根市、贝克兰德、普利兹港、康斯顿'];
       L.push('');
       L.push('▎已知地图');
       knownLocs.forEach(function(s){ L.push('· ' + s); });
@@ -9647,6 +10061,7 @@ function genItemDesc_v11(name) {
   // 0. 数据结构初始化（只加，不删）
   // ═══════════════════════════════════════════════════
   if (!Array.isArray(state.memoryShort)) state.memoryShort = [];
+  if (!Array.isArray(state.memoryEra)) state.memoryEra = [];
   if (!Array.isArray(state.memoryMid)) state.memoryMid = [];
   if (!Array.isArray(state.memoryLong)) state.memoryLong = [];
   if (!Array.isArray(state.openThreads)) state.openThreads = [];
@@ -9702,7 +10117,7 @@ function genItemDesc_v11(name) {
         if (p.length >= 2 && text.indexOf(p) >= 0) kws[p] = 1;
       });
     });
-    ['廷根', '贝克兰德', '铁十字街', '佐特兰街', '水手区', '圣赛琳娜', '豪尔斯', '黑荆棘', '普利兹港'].forEach(function(l) {
+    ['廷根', '贝克兰德', '铁十字街', '佐特兰街', '码头区', '圣赛琳娜', '豪尔斯', '黑荆棘', '普利兹港'].forEach(function(l) {
       if (text.indexOf(l) >= 0) kws[l] = 1;
     });
     (state.bag || []).forEach(function(b) {
@@ -9959,57 +10374,14 @@ function genItemDesc_v11(name) {
           if (open.length) {
             extra += '\n\n【未完成事项 · 剧情线追踪】';
             extra += '\n以下事情玩家已开启但尚未完成，不要遗忘：';
-            open.slice(0, 15).forEach(function(t) {
+            open.slice(0, 30).forEach(function(t) {
               extra += '\n· [' + (t.priority >= 4 ? '重要' : '普通') + '] ' + t.title;
               if (t.desc) extra += '：' + t.desc.slice(0, 100);
               if (t.relatedNPC && t.relatedNPC.length) extra += '（涉及：' + t.relatedNPC.join('、') + '）';
             });
           }
 
-          // NPC 独立记忆
-          var relations = state.relations || {};
-          var cands = Object.keys(relations).filter(function(n) {
-            var r = relations[n];
-            if (r._background) return false;
-            if (!Array.isArray(r.memory) || !r.memory.length) return false;
-            return true;
-          });
-          cands.sort(function(a, b) {
-            var ra = relations[a], rb = relations[b];
-            var sa = (ra.status === '在场' ? 100 : 0);
-            var sb = (rb.status === '在场' ? 100 : 0);
-            sa += (ra.memory || []).filter(function(m){ return m && m.aboutPlayer; }).length * 10;
-            sb += (rb.memory || []).filter(function(m){ return m && m.aboutPlayer; }).length * 10;
-            return sb - sa;
-          });
-          cands = cands.slice(0, 10);
 
-          if (cands.length) {
-            extra += '\n\n【NPC 独立记忆 · 这些 NPC 记得的事】';
-            cands.forEach(function(name) {
-              var r = relations[name];
-              var mems = r.memory || [];
-              var about = mems.filter(function(m){ return m && m.aboutPlayer; }).slice(-5);
-              var others = mems.slice(-5);
-              var merged = [], seen = {};
-              about.concat(others).forEach(function(m) {
-                if (!m) return;
-                var key = (m.turn || 0) + '|' + String(m.event || '').slice(0, 30);
-                if (seen[key]) return;
-                seen[key] = 1;
-                merged.push(m);
-              });
-              merged = merged.slice(-8);
-              extra += '\n【' + name + '】（共 ' + mems.length + ' 条，最近 ' + merged.length + ' 条：）';
-              merged.forEach(function(m) {
-                extra += '\n  · 回合' + (m.turn || '?') + ' ' + (m.time || '') + ' ' +
-                  (m.emotion ? '(' + m.emotion + ') ' : '') +
-                  (m.aboutPlayer ? '[关于玩家] ' : '') +
-                  String(m.event || '').slice(0, 120);
-              });
-            });
-            extra += '\n铁律：上述 NPC 记得的事必须承认，不得写成"初次见面""从没见过"。';
-          }
 
           if (extra) {
             for (var i = msgs.length - 1; i >= 0; i--) {
@@ -10056,6 +10428,7 @@ function genItemDesc_v11(name) {
         s.system.memoryShort = state.memoryShort || [];
         s.system.memoryMid = state.memoryMid || [];
         s.system.memoryLong = state.memoryLong || [];
+        s.system.memoryEra = state.memoryEra || [];
         s.system.openThreads = state.openThreads || [];
         s.system._historyWarnings = state._historyWarnings || [];
         s.system._lastCompressTurn = state._lastCompressTurn || 0;
@@ -10074,6 +10447,7 @@ function genItemDesc_v11(name) {
           state.memoryShort = d.system.memoryShort || [];
           state.memoryMid = d.system.memoryMid || [];
           state.memoryLong = d.system.memoryLong || [];
+    state.memoryEra = d.system.memoryEra || [];
           state.openThreads = d.system.openThreads || [];
           state._historyWarnings = d.system._historyWarnings || [];
           state._lastCompressTurn = d.system._lastCompressTurn || 0;
@@ -10177,14 +10551,16 @@ function genItemDesc_v11(name) {
   // ═══ 0. 数据结构（只加，不删） ═══
   if (!Array.isArray(state.memoryEntries)) state.memoryEntries = [];
   if (!Array.isArray(state.memoryShort)) state.memoryShort = [];
+  if (!Array.isArray(state.memoryEra)) state.memoryEra = [];
   if (!Array.isArray(state.memoryMid)) state.memoryMid = [];
   if (!Array.isArray(state.memoryLong)) state.memoryLong = [];
   if (!state.memoryIndex || typeof state.memoryIndex !== 'object') state.memoryIndex = {};
 
   var MEM_ENTRIES_CAP = 50000;
-  var SHORT_KEEP = 500;
-  var MID_KEEP = 200;
-  var LONG_KEEP = 100;
+  var SHORT_KEEP = 2000;
+  var MID_KEEP = 500;
+  var LONG_KEEP = 200;
+  var ERA_KEEP = 50;
   var RETRIEVE_LIMIT = 20;
   var RETRIEVE_MIN_SCORE = 5;
 
@@ -10204,7 +10580,7 @@ function genItemDesc_v11(name) {
   }
 
   var LOCATION_WORDS = [
-    '廷根', '贝克兰德', '铁十字街', '佐特兰街', '水手区', '圣赛琳娜',
+    '廷根', '贝克兰德', '铁十字街', '佐特兰街', '码头区', '圣赛琳娜',
     '豪尔斯', '黑荆棘', '普利兹港', '乔伍德', '希尔斯顿',
     '鲁恩', '因蒂斯', '弗萨克', '费内波特', '迷雾海', '狂暴海', '苏尼亚海',
     '源堡', '混沌海', '母巢', '永暗之河', '失序之国', '灾祸之城',
@@ -10371,6 +10747,7 @@ function genItemDesc_v11(name) {
         items.forEach(function(it){ if ((existing.items || []).indexOf(it) < 0) existing.items.push(it); });
         kws.forEach(function(k){ if ((existing.keywords || []).indexOf(k) < 0) existing.keywords.push(k); });
         aliases.forEach(function(a){ if ((existing.aliases || []).indexOf(a) < 0) existing.aliases.push(a); });
+        if (entry.time) existing.time = entry.time;
         if (entry.location) existing.locations = [String(entry.location)];
         ent.locations.forEach(function(l){ if ((existing.locations || []).indexOf(l) < 0) existing.locations.push(l); });
         if (text) existing.rawText = (existing.rawText || '') + '\n' + text;
@@ -10441,20 +10818,22 @@ function genItemDesc_v11(name) {
       var has = state.memoryShort.some(function(s){ return s.turn === m.turn; });
       if (has) return;
 
-      var parts = [];
-      if (m.action) parts.push(m.action.slice(0, 50));
-      if (m.events && m.events.length) parts.push(m.events.join('；').slice(0, 80));
-      if (m.npcs && m.npcs.length) parts.push('涉及：' + m.npcs.join('、'));
-      if (m.locations && m.locations.length) parts.push('@' + m.locations.join('、'));
+      var ev = (m.events && m.events[0]) ? String(m.events[0]) : '';
+      if (!ev) ev = String(m.rawText || '').replace(/\s+/g, ' ').slice(0, 60);
+      if (!ev) return;
 
-      var summary = parts.join(' · ').slice(0, 150);
-      if (!summary) return;
+      var loc = m.location || '';
+      var summary = 'R' + m.turn + (loc ? ' ' + loc : '') + '：' + ev.slice(0, 60);
+      if (m.result) summary += '，' + String(m.result).slice(0, 30);
+      summary = summary.slice(0, 120);
 
       state.memoryShort.push({
         turn: m.turn,
         fromTurn: m.turn,
         toTurn: m.turn,
         summary: summary,
+        events: (m.events || []).slice(0, 4).map(function(x){ return String(x).slice(0, 60); }),
+        npcs: (m.npcs || []).slice(0, 6).map(function(x){ return String(x).slice(0, 20); }),
         createdAt: Date.now()
       });
 
@@ -10485,7 +10864,7 @@ function genItemDesc_v11(name) {
     var lastErr = null;
     for (var i = 0; i < targets.length; i++) {
       try {
-        var data = await unifiedRequest(targets[i], key, payload, 30000);
+        var data = await unifiedRequest(targets[i], key, payload, 120000);
         if (data.choices && data.choices[0] && data.choices[0].message) {
           return data.choices[0].message.content;
         }
@@ -10518,6 +10897,13 @@ function genItemDesc_v11(name) {
         var six2 = unmergedMid.slice(0, 6);
         var ok2 = await compressToLong(six2);
         if (ok2) six2.forEach(function(s){ s.merged = true; });
+
+      var unmergedLong = state.memoryLong.filter(function(s){ return !s.merged; });
+      if (unmergedLong.length >= 6) {
+        var six3 = unmergedLong.slice(0, 6);
+        var ok3 = await compressToEra(six3);
+        if (ok3) six3.forEach(function(s){ s.merged = true; });
+      }
       }
     } catch (e) {
       console.warn('[V44.1] 压缩出错：', e.message);
@@ -10528,19 +10914,28 @@ function genItemDesc_v11(name) {
 
   async function compressToMid(items) {
     try {
-      var text = items.map(function(s){ return '[' + s.fromTurn + '-' + s.toTurn + '] ' + s.summary; }).join('\n');
+      var text = items.map(function(s){ return '[' + s.fromTurn + '-' + s.toTurn + '] ' + summaryText(s); }).join('\n');
       var from = items[0].fromTurn, to = items[items.length - 1].toTurn;
-      var prompt = '以下游戏摘要（回合 ' + from + '-' + to + '），合并成 200 字以内的中期摘要，保留主线、人物变化、关键事件。严格返回 JSON：{"summary":"..."}\n\n' + text;
-      var raw = await rawCallAPI(prompt, 500);
+      var prompt = '你是《诡秘之主》的编年史官，只记录事实，不写形容。\n' +
+        '以下是回合 ' + from + '-' + to + ' 的摘要，请合并成中期记录。\n' +
+        '严格返回 JSON：{"events":["3-6条，每条不超过40字"],"changes":["状态变化：位置/序列/物品/伤势/金钱"],"promises":["承诺、约定、欠人情"],"npcs":["关键人物，必须用全名"],"open":["尚未解决的线索"]}\n' +
+        '规则：人名、地名、序列名原样保留，禁止用“某人/某地”代替；数字必须保留；只写发生过的事，不写心理描写；没有的字段给空数组。\n\n' + text;
+      var raw = await rawCallAPI(prompt, 600);
       var r = tryParseJSON(raw);
-      if (r.ok && r.data && r.data.summary) {
-        state.memoryMid.push({
+      if (r.ok && r.data && Array.isArray(r.data.events) && r.data.events.length) {
+        var obj = {
           fromTurn: from, toTurn: to,
-          summary: String(r.data.summary).slice(0, 350),
+          events: r.data.events.slice(0, 8).map(function(x){ return String(x).slice(0, 60); }),
+          changes: (r.data.changes || []).slice(0, 6).map(function(x){ return String(x).slice(0, 60); }),
+          promises: (r.data.promises || []).slice(0, 6).map(function(x){ return String(x).slice(0, 60); }),
+          npcs: (r.data.npcs || []).slice(0, 8).map(function(x){ return String(x).slice(0, 20); }),
+          open: (r.data.open || []).slice(0, 6).map(function(x){ return String(x).slice(0, 60); }),
           createdAt: Date.now()
-        });
+        };
+        obj.summary = summaryText(obj).slice(0, 350);
+        state.memoryMid.push(obj);
         if (state.memoryMid.length > MID_KEEP) state.memoryMid = state.memoryMid.slice(-MID_KEEP);
-        console.log('[V44.1] Mid 完成：' + from + '-' + to);
+        console.log('[摘要] Mid 完成：' + from + '-' + to);
         return true;
       }
     } catch (e) {}
@@ -10549,25 +10944,63 @@ function genItemDesc_v11(name) {
 
   async function compressToLong(items) {
     try {
-      var text = items.map(function(s){ return '[' + s.fromTurn + '-' + s.toTurn + '] ' + s.summary; }).join('\n');
+      var text = items.map(function(s){ return '[' + s.fromTurn + '-' + s.toTurn + '] ' + summaryText(s); }).join('\n');
       var from = items[0].fromTurn, to = items[items.length - 1].toTurn;
-      var prompt = '以下游戏中期摘要（回合 ' + from + '-' + to + '），合并成 300 字以内的长期摘要，保留玩家整个阶段的核心经历、重大转折、关键人物状态、玩家目标。严格返回 JSON：{"summary":"..."}\n\n' + text;
-      var raw = await rawCallAPI(prompt, 700);
+      var prompt = '你是《诡秘之主》的编年史官，只记录事实，不写形容。\n' +
+        '以下是回合 ' + from + '-' + to + ' 的中期摘要，请合并成长期记录。\n' +
+        '严格返回 JSON：{"events":["5-8条，每条不超过50字"],"changes":["玩家与关键人物的状态变化"],"promises":["承诺、约定、欠人情"],"npcs":["关键人物，必须用全名"],"open":["尚未解决的线索"]}\n' +
+        '规则：人名、地名、序列名、数字原样保留；只写发生过的事；没有的字段给空数组。\n\n' + text;
+      var raw = await rawCallAPI(prompt, 800);
       var r = tryParseJSON(raw);
-      if (r.ok && r.data && r.data.summary) {
-        state.memoryLong.push({
+      if (r.ok && r.data && Array.isArray(r.data.events) && r.data.events.length) {
+        var obj = {
           fromTurn: from, toTurn: to,
-          summary: String(r.data.summary).slice(0, 500),
+          events: r.data.events.slice(0, 10).map(function(x){ return String(x).slice(0, 70); }),
+          changes: (r.data.changes || []).slice(0, 8).map(function(x){ return String(x).slice(0, 70); }),
+          promises: (r.data.promises || []).slice(0, 8).map(function(x){ return String(x).slice(0, 70); }),
+          npcs: (r.data.npcs || []).slice(0, 10).map(function(x){ return String(x).slice(0, 20); }),
+          open: (r.data.open || []).slice(0, 8).map(function(x){ return String(x).slice(0, 70); }),
           createdAt: Date.now()
-        });
+        };
+        obj.summary = summaryText(obj).slice(0, 500);
+        state.memoryLong.push(obj);
         if (state.memoryLong.length > LONG_KEEP) state.memoryLong = state.memoryLong.slice(-LONG_KEEP);
-        console.log('[V44.1] Long 完成：' + from + '-' + to);
+        console.log('[摘要] Long 完成：' + from + '-' + to);
         return true;
       }
     } catch (e) {}
     return false;
   }
 
+  async function compressToEra(items) {
+    try {
+      var text = items.map(function(s){ return '[' + s.fromTurn + '-' + s.toTurn + '] ' + summaryText(s); }).join('\n');
+      var from = items[0].fromTurn, to = items[items.length - 1].toTurn;
+      var prompt = '你是《诡秘之主》的编年史官，只记录事实，不写形容。\n' +
+        '以下是回合 ' + from + '-' + to + ' 的长期摘要，请合并成纪元记录。\n' +
+        '严格返回 JSON：{"events":["6-10条，每条不超过60字"],"changes":["世界格局与玩家状态的变化"],"promises":["仍未了结的承诺"],"npcs":["关键人物，必须用全名"],"open":["仍未解决的线索"]}\n' +
+        '规则：人名、地名、序列名、数字原样保留；只写发生过的事；没有的字段给空数组。\n\n' + text;
+      var raw = await rawCallAPI(prompt, 1000);
+      var r = tryParseJSON(raw);
+      if (r.ok && r.data && Array.isArray(r.data.events) && r.data.events.length) {
+        var obj = {
+          fromTurn: from, toTurn: to,
+          events: r.data.events.slice(0, 12).map(function(x){ return String(x).slice(0, 80); }),
+          changes: (r.data.changes || []).slice(0, 10).map(function(x){ return String(x).slice(0, 80); }),
+          promises: (r.data.promises || []).slice(0, 10).map(function(x){ return String(x).slice(0, 80); }),
+          npcs: (r.data.npcs || []).slice(0, 12).map(function(x){ return String(x).slice(0, 20); }),
+          open: (r.data.open || []).slice(0, 10).map(function(x){ return String(x).slice(0, 80); }),
+          createdAt: Date.now()
+        };
+        obj.summary = summaryText(obj).slice(0, 600);
+        state.memoryEra.push(obj);
+        if (state.memoryEra.length > ERA_KEEP) state.memoryEra = state.memoryEra.slice(-ERA_KEEP);
+        console.log('[摘要] Era 完成：' + from + '-' + to);
+        return true;
+      }
+    } catch (e) {}
+    return false;
+  }
   // ═══ 9. 覆盖 recallMemories（评分式） ═══
   function keywordScore(k, text) {
     if (!k || k.length < 2) return 0;
@@ -10581,126 +11014,7 @@ function genItemDesc_v11(name) {
     return 0;
   }
 
-  window.recallMemories = function(action) {
-    try {
-      var text = cleanText(action);
-      var isRetro = RETROSPECTIVE_WORDS.test(text);
-      var curEnt = extractEntities(text);
-      var curKw = extractKeywords(text);
-
-      var scored = [];
-      (state.memoryEntries || []).forEach(function(m) {
-        if (m._fallback || m.placeholder) return; // 【改】过滤空占位
-        var s = 0;
-
-        curEnt.npcs.forEach(function(n){
-          if ((m.npcs || []).indexOf(n) >= 0) s += 20;
-        });
-
-        (m.aliases || []).forEach(function(a){
-          if (a.length >= 2 && text.indexOf(a) >= 0) s += 15;
-        });
-
-        curEnt.locations.forEach(function(l){
-          if ((m.locations || []).indexOf(l) >= 0) s += 12;
-        });
-
-        // 物品：完全匹配 + 子串包含
-        curEnt.items.forEach(function(it){
-          (m.items || []).forEach(function(histIt){
-            if (histIt === it) s += 10;
-            else if (histIt.indexOf(it) >= 0 || it.indexOf(histIt) >= 0) s += 6;
-          });
-        });
-
-        // 关键词：完全 + 前缀回退
-        (m.keywords || []).forEach(function(k){
-          s += keywordScore(k, text);
-        });
-
-        curKw.forEach(function(ck){
-          (m.keywords || []).forEach(function(hk){
-            if (hk === ck) s += 4;
-          });
-        });
-
-        s += (m.importance || 2) * 2;
-
-        var age = (state._turnCount || 0) - (m.turn || 0);
-        if (age <= 20) s += 5;
-
-        if (s >= RETRIEVE_MIN_SCORE) scored.push({ m: m, score: s });
-      });
-
-      scored.sort(function(a, b){ return b.score - a.score; });
-      var top = scored.slice(0, RETRIEVE_LIMIT);
-
-      if (isRetro) {
-        var seen = {};
-        top.forEach(function(x){ seen[x.m.id] = 1; });
-        var recent = state.memoryEntries.slice(-15).reverse();
-        for (var i = 0; i < recent.length && top.length < RETRIEVE_LIMIT + 10; i++) {
-          if (!seen[recent[i].id] && !recent[i]._fallback && !recent[i].placeholder) {
-            top.push({ m: recent[i], score: 0 });
-            seen[recent[i].id] = 1;
-          }
-        }
-      }
-
-      var out = [];
-
-      if (top.length) {
-        out.push('══ 相关历史记忆（' + top.length + ' 条）══');
-        top.forEach(function(x){
-          var m = x.m;
-          out.push('· [回合' + m.turn + ' · ' + (m.time || '?') + ']');
-          if (m.action) out.push('  玩家：' + m.action.slice(0, 150));
-          if (m.events && m.events.length) out.push('  发生：' + m.events.join('；').slice(0, 250));
-          if (m.npcs && m.npcs.length) out.push('  涉及人物：' + m.npcs.join('、'));
-          if (m.locations && m.locations.length) out.push('  涉及地点：' + m.locations.join('、'));
-          if (m.items && m.items.length) out.push('  涉及物品：' + m.items.join('、'));
-          if (m.aliases && m.aliases.length) out.push('  别名：' + m.aliases.join('、'));
-          out.push('');
-        });
-      }
-
-      var shorts = (state.memoryShort || []).slice(-15).reverse();
-      if (shorts.length) {
-        out.push('══ 近期摘要 ══');
-        shorts.forEach(function(s){
-          out.push('· [回合' + s.fromTurn + '-' + s.toTurn + '] ' + s.summary);
-        });
-        out.push('');
-      }
-
-      var mids = (state.memoryMid || []).slice(-6).reverse();
-      if (mids.length) {
-        out.push('══ 中期摘要 ══');
-        mids.forEach(function(s){
-          out.push('· [回合' + s.fromTurn + '-' + s.toTurn + '] ' + s.summary);
-        });
-        out.push('');
-      }
-
-      var longs = (state.memoryLong || []).slice(-3).reverse();
-      if (longs.length) {
-        out.push('══ 长期摘要 ══');
-        longs.forEach(function(s){
-          out.push('· [回合' + s.fromTurn + '-' + s.toTurn + '] ' + s.summary);
-        });
-        out.push('');
-      }
-
-      var result = out.join('\n');
-      console.log('%c[V44.1 评分检索] ' + result.length + ' 字 · 命中 ' + top.length + ' 条' + (isRetro ? ' [回溯]' : ''),
-        'color:#0891b2;font-weight:bold');
-      return result;
-    } catch (e) {
-      console.warn('[V44.1] recallMemories 出错，降级：', e.message);
-      return '';
-    }
-  };
-
+  
   // ═══ 10. hook applyAI ═══
   if (typeof window.applyAI === 'function' && !window.applyAI.__v44) {
     var _oa = window.applyAI;
@@ -10908,7 +11222,7 @@ function genItemDesc_v11(name) {
     return [v];
   }
   var LOCATION_WORDS = [
-    '廷根', '贝克兰德', '铁十字街', '佐特兰街', '水手区', '圣赛琳娜',
+    '廷根', '贝克兰德', '铁十字街', '佐特兰街', '码头区', '圣赛琳娜',
     '豪尔斯', '黑荆棘', '普利兹港', '乔伍德', '希尔斯顿',
     '鲁恩', '因蒂斯', '弗萨克', '费内波特', '迷雾海', '狂暴海', '苏尼亚海',
     '源堡', '混沌海', '母巢', '永暗之河', '失序之国', '灾祸之城',
@@ -11006,155 +11320,7 @@ function genItemDesc_v11(name) {
   var RETRIEVE_LIMIT = 25;
   var RETRIEVE_MIN_SCORE = 5;
 
-  window.recallMemories = function(action) {
-    try {
-      var text = cleanText(action);
-      var isRetro = RETROSPECTIVE_WORDS.test(text);
-      var curEnt = extractEntities(text);
-      var curKw = extractKeywords(text);
-      var curGrams = extract4Grams(text);
-
-      var scored = [];
-      (state.memoryEntries || []).forEach(function(m) {
-        if (m._fallback || m.placeholder) return;
-        var s = 0;
-
-        // NPC +20
-        curEnt.npcs.forEach(function(n){
-          if ((m.npcs || []).indexOf(n) >= 0) s += 20;
-        });
-
-        // 别名 +15
-        (m.aliases || []).forEach(function(a){
-          if (a.length >= 2 && text.indexOf(a) >= 0) s += 15;
-        });
-
-        // 【新增】events 匹配 +12 / 前缀 +6
-        (m.events || []).forEach(function(ev){
-          if (!ev || ev.length < 2) return;
-          if (text.indexOf(ev) >= 0) s += 12;
-          else if (ev.length >= 5 && text.indexOf(ev.slice(0, 4)) >= 0) s += 6;
-          else if (ev.length >= 4 && text.indexOf(ev.slice(0, 3)) >= 0) s += 4;
-        });
-
-        // 【新增】action 匹配 +10 / 前缀 +5
-        if (m.action && m.action.length >= 2) {
-          if (text.indexOf(m.action) >= 0) s += 10;
-          else if (m.action.length >= 4 && text.indexOf(m.action.slice(0, 3)) >= 0) s += 5;
-        }
-
-        // 关键词
-        (m.keywords || []).forEach(function(k){
-          s += keywordScore(k, text);
-        });
-        curKw.forEach(function(ck){
-          (m.keywords || []).forEach(function(hk){
-            if (hk === ck) s += 4;
-          });
-        });
-
-        // 地点 +12
-        curEnt.locations.forEach(function(l){
-          if ((m.locations || []).indexOf(l) >= 0) s += 12;
-        });
-
-        // 物品 +10 / 子串 +6
-        curEnt.items.forEach(function(it){
-          (m.items || []).forEach(function(histIt){
-            if (histIt === it) s += 10;
-            else if (histIt.indexOf(it) >= 0 || it.indexOf(histIt) >= 0) s += 6;
-          });
-        });
-
-        // 【新增】rawText 4-gram 命中 +4/hit，最多 +20
-        if (m.rawText && curGrams.length) {
-          var hits = 0;
-          for (var gi = 0; gi < curGrams.length; gi++) {
-            if (m.rawText.indexOf(curGrams[gi]) >= 0) hits++;
-          }
-          if (hits > 0) s += Math.min(hits * 4, 20);
-        }
-
-        // importance * 2
-        s += (m.importance || 2) * 2;
-
-        // 近期 +5
-        var age = (state._turnCount || 0) - (m.turn || 0);
-        if (age <= 20) s += 5;
-
-        if (s >= RETRIEVE_MIN_SCORE) scored.push({ m: m, score: s });
-      });
-
-      scored.sort(function(a, b){ return b.score - a.score; });
-      var top = scored.slice(0, RETRIEVE_LIMIT);
-
-      // 回溯模式：补最近 15 条
-      if (isRetro) {
-        var seen = {};
-        top.forEach(function(x){ seen[x.m.id] = 1; });
-        var recent = state.memoryEntries.slice(-15).reverse();
-        for (var i = 0; i < recent.length && top.length < RETRIEVE_LIMIT + 10; i++) {
-          if (!seen[recent[i].id] && !recent[i]._fallback && !recent[i].placeholder) {
-            top.push({ m: recent[i], score: 0 });
-            seen[recent[i].id] = 1;
-          }
-        }
-      }
-
-      var out = [];
-
-      if (top.length) {
-        out.push('══ 相关历史记忆（' + top.length + ' 条）══');
-        top.forEach(function(x){
-          var m = x.m;
-          out.push('· [回合' + m.turn + ' · ' + (m.time || '?') + ']');
-          if (m.action) out.push('  玩家：' + m.action.slice(0, 150));
-          if (m.events && m.events.length) out.push('  发生：' + m.events.join('；').slice(0, 250));
-          if (m.npcs && m.npcs.length) out.push('  涉及人物：' + m.npcs.join('、'));
-          if (m.locations && m.locations.length) out.push('  涉及地点：' + m.locations.join('、'));
-          if (m.items && m.items.length) out.push('  涉及物品：' + m.items.join('、'));
-          if (m.aliases && m.aliases.length) out.push('  别名：' + m.aliases.join('、'));
-          out.push('');
-        });
-      }
-
-      var shorts = (state.memoryShort || []).slice(-15).reverse();
-      if (shorts.length) {
-        out.push('══ 近期摘要 ══');
-        shorts.forEach(function(s){
-          out.push('· [回合' + s.fromTurn + '-' + s.toTurn + '] ' + s.summary);
-        });
-        out.push('');
-      }
-
-      var mids = (state.memoryMid || []).slice(-6).reverse();
-      if (mids.length) {
-        out.push('══ 中期摘要 ══');
-        mids.forEach(function(s){
-          out.push('· [回合' + s.fromTurn + '-' + s.toTurn + '] ' + s.summary);
-        });
-        out.push('');
-      }
-
-      var longs = (state.memoryLong || []).slice(-3).reverse();
-      if (longs.length) {
-        out.push('══ 长期摘要 ══');
-        longs.forEach(function(s){
-          out.push('· [回合' + s.fromTurn + '-' + s.toTurn + '] ' + s.summary);
-        });
-        out.push('');
-      }
-
-      var result = out.join('\n');
-      console.log('%c[V44.2 检索] ' + result.length + ' 字 · 命中 ' + top.length + ' 条' + (isRetro ? ' [回溯]' : ''),
-        'color:#0891b2;font-weight:bold');
-      return result;
-    } catch (e) {
-      console.warn('[V44.2] recallMemories 出错：', e.message);
-      return '';
-    }
-  };
-
+  
   // ═══ 修 3：applyAI 后处理合并新实体 ═══
   if (typeof window.applyAI === 'function' && !window.applyAI.__v442post) {
     var _oap = window.applyAI;
@@ -11307,184 +11473,7 @@ function genItemDesc_v11(name) {
   var RETRIEVE_LIMIT = 25;
   var RETRIEVE_MIN_SCORE = 3; // 从 5 降到 3
 
-  window.recallMemories = function(action) {
-    try {
-      var text = normalizeText(action);
-      var raw = String(action || '');
-      var isRetro = /之前|上次|以前|曾经|当年|当初|那天|那时|过去|早先|先前|后来|那个|那家|那位|那件|答应过|说过|提过|见过|遇到过/.test(raw);
-      var synExtra = expandSyn(text).map(normalizeText).filter(Boolean);
-      var grams2 = bigrams(text);
-
-      // 抽出输入里的实体片段（2-4 字连续中文，且不含介词/助词）
-      var entFrags = [];
-      var fragRe = /[\u4e00-\u9fa5]{2,4}/g;
-      var fm;
-      while ((fm = fragRe.exec(text)) !== null) {
-        if (looksLikeEntity(fm[0]) && entFrags.indexOf(fm[0]) < 0) entFrags.push(fm[0]);
-      }
-
-      // 依赖 V44.2 暴露的 extractEntities？没有的话自己算
-      var curNpcs = [], curItems = [], curLocs = [];
-      Object.keys(state.relations || {}).forEach(function(n){
-        if (!n || n.length < 2) return;
-        if (text.indexOf(normalizeText(n)) >= 0) curNpcs.push(n);
-      });
-      (state.bag || []).forEach(function(b){
-        if (b && b.name && text.indexOf(normalizeText(b.name)) >= 0) curItems.push(b.name);
-      });
-      ['廷根','贝克兰德','铁十字街','佐特兰街','水手区','圣赛琳娜','豪尔斯','黑荆棘','普利兹港'].forEach(function(l){
-        if (text.indexOf(l) >= 0) curLocs.push(l);
-      });
-
-      var scored = [];
-      (state.memoryEntries || []).forEach(function(m) {
-        if (m._fallback || m.placeholder) return;
-        var s = 0;
-
-        // NPC +20
-        curNpcs.forEach(function(n){
-          if ((m.npcs || []).indexOf(n) >= 0) s += 20;
-        });
-        // 别名 +15
-        (m.aliases || []).forEach(function(a){
-          if (a.length >= 2 && text.indexOf(normalizeText(a)) >= 0) s += 15;
-        });
-        // events +12 / 前缀 +6 / 片段命中 +5
-        (m.events || []).forEach(function(ev){
-          if (!ev) return;
-          var nev = normalizeText(ev);
-          if (nev.indexOf(text) >= 0 || text.indexOf(nev) >= 0) s += 12;
-          else if (ev.length >= 5 && text.indexOf(normalizeText(ev.slice(0,4))) >= 0) s += 6;
-          // 4-gram 交集
-          else {
-            var count = 0;
-            for (var i = 0; i + 4 <= nev.length; i++) {
-              if (text.indexOf(nev.slice(i, i+4)) >= 0) count++;
-            }
-            if (count) s += Math.min(count * 3, 9);
-          }
-        });
-        // action +10 / 前缀 +5
-        if (m.action) {
-          var na = normalizeText(m.action);
-          if (na.indexOf(text) >= 0 || text.indexOf(na) >= 0) s += 10;
-          else if (m.action.length >= 4 && text.indexOf(normalizeText(m.action.slice(0,3))) >= 0) s += 5;
-        }
-        // keywords
-        (m.keywords || []).forEach(function(k){
-          var nk = normalizeText(k);
-          if (!nk || nk.length < 2) return;
-          if (text.indexOf(nk) >= 0) s += 8;
-          else if (nk.length >= 3 && text.indexOf(nk.slice(0,2)) >= 0) s += 3;
-        });
-        // 地点 +12
-        curLocs.forEach(function(l){
-          if ((m.locations || []).indexOf(l) >= 0) s += 12;
-        });
-        // 物品 +10 / 子串 +6
-        curItems.forEach(function(it){
-          (m.items || []).forEach(function(hit){
-            if (hit === it) s += 10;
-            else if (hit.indexOf(it) >= 0 || it.indexOf(hit) >= 0) s += 6;
-          });
-        });
-        // 同义词扩展命中 events/action/rawText +6
-        if (synExtra.length) {
-          var bag = normalizeText((m.rawText || '') + ' ' + (m.events||[]).join(' ') + ' ' + (m.action||''));
-          var synHit = 0;
-          synExtra.forEach(function(sw){ if (sw && bag.indexOf(sw) >= 0) synHit++; });
-          if (synHit) s += Math.min(synHit * 3, 12);
-        }
-        // 2-gram 命中 rawText +2/hit，最多 +12
-        if (grams2.length && m.rawText) {
-          var rn = normalizeText(m.rawText);
-          var h2 = 0;
-          for (var gi = 0; gi < grams2.length; gi++) {
-            if (rn.indexOf(grams2[gi]) >= 0) h2++;
-          }
-          if (h2) s += Math.min(h2 * 2, 12);
-        }
-        // 实体片段命中 rawText +4/个，最多 +12
-        if (entFrags.length && m.rawText) {
-          var rn2 = normalizeText(m.rawText);
-          var h3 = 0;
-          entFrags.forEach(function(f){ if (rn2.indexOf(f) >= 0) h3++; });
-          if (h3) s += Math.min(h3 * 4, 12);
-        }
-        // importance * 2
-        s += (m.importance || 2) * 2;
-        // 近期 +5
-        var age = (state._turnCount || 0) - (m.turn || 0);
-        if (age <= 20) s += 5;
-
-        if (s >= RETRIEVE_MIN_SCORE) scored.push({ m: m, score: s });
-      });
-
-      scored.sort(function(a, b){ return b.score - a.score; });
-      var top = scored.slice(0, RETRIEVE_LIMIT);
-
-      if (isRetro) {
-        var seen = {};
-        top.forEach(function(x){ seen[x.m.id] = 1; });
-        // 优先补"过去提到的关键事件"（含 NPC/事件），而不是无差别补最近
-        var recent = state.memoryEntries
-          .filter(function(m){ return !m._fallback && !m.placeholder; })
-          .slice(-30).reverse();
-        var recentFiltered = recent.filter(function(m){
-          return (m.npcs && m.npcs.length) || (m.events && m.events.length) ||
-                 (m.importance || 0) >= 4;
-        });
-        var pool = recentFiltered.length ? recentFiltered : recent;
-        for (var i = 0; i < pool.length && top.length < RETRIEVE_LIMIT + 8; i++) {
-          if (!seen[pool[i].id]) {
-            top.push({ m: pool[i], score: 0 });
-            seen[pool[i].id] = 1;
-          }
-        }
-      }
-
-      var out = [];
-      if (top.length) {
-        out.push('══ 相关历史记忆（' + top.length + ' 条，按相关度排序）══');
-        top.forEach(function(x){
-          var m = x.m;
-          out.push('· [回合' + m.turn + ' · ' + (m.time || '?') + (x.score ? ' · 相关' + x.score : '') + ']');
-          if (m.action) out.push('  玩家：' + m.action.slice(0, 150));
-          if (m.events && m.events.length) out.push('  发生：' + m.events.join('；').slice(0, 250));
-          if (m.npcs && m.npcs.length) out.push('  涉及人物：' + m.npcs.join('、'));
-          if (m.locations && m.locations.length) out.push('  涉及地点：' + m.locations.join('、'));
-          if (m.items && m.items.length) out.push('  涉及物品：' + m.items.join('、'));
-          if (m.aliases && m.aliases.length) out.push('  别名：' + m.aliases.join('、'));
-          out.push('');
-        });
-      }
-      var shorts = (state.memoryShort || []).slice(-15).reverse();
-      if (shorts.length) {
-        out.push('══ 近期摘要 ══');
-        shorts.forEach(function(s){ out.push('· [回合' + s.fromTurn + '-' + s.toTurn + '] ' + s.summary); });
-        out.push('');
-      }
-      var mids = (state.memoryMid || []).slice(-6).reverse();
-      if (mids.length) {
-        out.push('══ 中期摘要 ══');
-        mids.forEach(function(s){ out.push('· [回合' + s.fromTurn + '-' + s.toTurn + '] ' + s.summary); });
-        out.push('');
-      }
-      var longs = (state.memoryLong || []).slice(-3).reverse();
-      if (longs.length) {
-        out.push('══ 长期摘要 ══');
-        longs.forEach(function(s){ out.push('· [回合' + s.fromTurn + '-' + s.toTurn + '] ' + s.summary); });
-      }
-      var result = out.join('\n');
-      console.log('%c[V44.3 检索] ' + result.length + ' 字 · 命中 ' + top.length + ' 条 · 阈值 3' + (isRetro ? ' [回溯]' : ''),
-        'color:#0891b2;font-weight:bold');
-      return result;
-    } catch (e) {
-      console.warn('[V44.3] recallMemories 出错：', e.message);
-      return '';
-    }
-  };
-
+  
   // ═══ 修 2：旧存档迁移（从 state.log 重建 memoryEntries） ═══
   function rebuildMemoryFromLog() {
     try {
@@ -12512,8 +12501,8 @@ function genItemDesc_v11(name) {
     if (state.identity) L.push('· 身份：' + safeStr(state.identity, 60));
     if (state.residence) L.push('· 居所：' + safeStr(state.residence, 60));
     L.push('· 途径：' + (state.path || '凡俗') + ' · 序列：' + (state.seq || '凡俗') + ' · 消化度：' + (state.digest || 0) + '%');
-    var abs = (state.abilities || []).map(function(a){ return a && a.name || ''; }).filter(Boolean);
-    if (abs.length) L.push('· 能力：' + abs.join('、'));
+    var abs = abilityText(state.abilities);
+    if (abs) L.push('· 能力：' + abs);
     var face = state.appearanceFace || state.appearance || '';
     if (face) L.push('· 长相：' + safeStr(face, 80));
     if (state.meta.background) L.push('· 背景：' + safeStr(state.meta.background, 120));
@@ -12545,7 +12534,7 @@ function genItemDesc_v11(name) {
     // 未完成事项
     var opens = (state.openThreads || []).filter(function(t){ return t.status === 'open'; });
     if (opens.length) {
-      L.push('· 未完成：' + opens.slice(0, 8).map(function(t){ return safeStr(t.title, 30); }).join('；'));
+      L.push('· 未完成：' + opens.slice(0, 15).map(function(t){ return safeStr(t.title, 30); }).join('；'));
     }
     return L.join('\n');
   }
@@ -12559,7 +12548,7 @@ function genItemDesc_v11(name) {
     if (r.gender) l1.push(r.gender);
     if (r.age) l1.push(r.age);
     if (r.path) l1.push(r.path);
-    if (r.seq) l1.push(r.seq);
+    if (r.seq) l1.push(r.seq + (angelKing(name, r) ? '（天使之王）' : ''));
     if (l1.length) L.push('· ' + l1.join(' · '));
     if (r.identity) L.push('· 身份：' + safeStr(r.identity, 60));
     if (r.faction) L.push('· 势力：' + safeStr(r.faction, 40));
@@ -12579,7 +12568,7 @@ function genItemDesc_v11(name) {
       var core = Array.isArray(r._coreMemory) ? r._coreMemory : [];
       if (core.length) {
         L.push('· 核心记忆（' + core.length + '条，最近15条）：');
-        core.slice(-60).forEach(function(m){
+        core.slice(-80).forEach(function(m){
           L.push('    ⚓ R' + (m.turn || '?') + ' ' + (m.aboutPlayer ? '[关于玩家] ' : '') + safeStr(m.event, 100));
         });
       }
@@ -12587,7 +12576,7 @@ function genItemDesc_v11(name) {
       var mem = Array.isArray(r.memory) ? r.memory : [];
       if (mem.length) {
         L.push('· 最近记忆（' + mem.length + '条，显示10条）：');
-        mem.slice(-50).forEach(function(m){
+        mem.slice(-60).forEach(function(m){
           L.push('    · R' + (m.turn || '?') + ' ' + safeStr(m.event, 80));
         });
       }
@@ -12632,7 +12621,16 @@ function genItemDesc_v11(name) {
     });
 
     var sorted = Object.keys(score).sort(function(a, b){ return score[b] - score[a]; });
-    return sorted.slice(0, 8);
+    var picked = sorted.slice(0, 8);
+    if (picked.length < 6) {
+      var rest = Object.keys(rels).filter(function(n) {
+        return rels[n] && !rels[n]._background && picked.indexOf(n) < 0;
+      }).sort(function(a, b) {
+        return (rels[b]._lastSeenTurn || 0) - (rels[a]._lastSeenTurn || 0);
+      });
+      for (var ri = 0; ri < rest.length && picked.length < 6; ri++) picked.push(rest[ri]);
+    }
+    return picked;
   }
 
   // ═══════════════════════════════════════════════════
@@ -12672,7 +12670,7 @@ function genItemDesc_v11(name) {
     });
 
     scored.sort(function(a, b){ return b.score - a.score; });
-    return scored.slice(0, 15).map(function(x){ return x.m; });
+    return scored.slice(0, 30).map(function(x){ return x.m; });
   }
 
   // ═══════════════════════════════════════════════════
@@ -12686,11 +12684,13 @@ function genItemDesc_v11(name) {
       out.push('══【块1】玩家永久事实 · 每轮必读══');
       out.push(fmtPlayerBlock());
 
-      // 块2：本轮相关 NPC（3-5 位详情）
-      var related = pickRelatedNpcs_v47(action);
+      // 块2：本轮相关 NPC（6-8 位详情）
+      try { state._lastRelatedNpcs = []; } catch(e) {}
+        var related = pickRelatedNpcs_v47(action);
+        try { state._lastRelatedNpcs = related.slice(); } catch(e) {}
       if (related.length) {
         out.push('');
-        out.push('══【块2】本轮相关 NPC · 完整档案与核心记忆══');
+        out.push('══【块2】本轮相关 NPC（6-8 位）· 完整档案与核心记忆══');
         related.forEach(function(n){
           out.push(fmtNpcBlock(n, true));
           out.push('');
@@ -12704,8 +12704,8 @@ function genItemDesc_v11(name) {
         if (m._grade === 'S') _S.push(m);
         else if (m._grade === 'A') _A.push(m);
       });
-      var _sKeep = _S.slice(-400);
-      var _aRoom = Math.max(0, 600 - _sKeep.length);
+      var _sKeep = _S.slice(-800);
+      var _aRoom = Math.max(0, 1200 - _sKeep.length);
       var sa = _sKeep.concat(_A.slice(-_aRoom));
       if (sa.length) {
         out.push('══【块3】永久事件索引 · S 级优先，最多 600 条（S 不会被 A 挤掉）══');
@@ -12718,7 +12718,7 @@ function genItemDesc_v11(name) {
       }
 
       // 块4：最近 50 轮精细
-      var recent = (state.memoryEntries || []).filter(function(m){ return m && !m._fallback && !m.placeholder; }).slice(-100);
+      var recent = (state.memoryEntries || []).filter(function(m){ return m && !m._fallback && !m.placeholder; }).slice(-200);
       if (recent.length) {
         out.push('══【块4】最近 ' + recent.length + ' 轮精细记录══');
         recent.forEach(function(m){
@@ -12735,22 +12735,28 @@ function genItemDesc_v11(name) {
       }
 
       // 块5：阶段摘要
-      if (state.memoryShort && state.memoryShort.length) {
+      if ((state.memoryShort && state.memoryShort.length) || (state.memoryEra && state.memoryEra.length)) {
         out.push('══【块5】阶段摘要══');
+        if (state.memoryEra && state.memoryEra.length) {
+          out.push('▎纪元：');
+          state.memoryEra.forEach(function(s){
+            out.push('· [R' + s.fromTurn + '-' + s.toTurn + '] ' + safeStr(summaryText(s), 160));
+          });
+        }
         out.push('▎最近短期：');
-        state.memoryShort.slice(-15).forEach(function(s){
-          out.push('· [R' + s.fromTurn + '-' + s.toTurn + '] ' + safeStr(s.summary, 100));
+        state.memoryShort.slice(-30).forEach(function(s){
+          out.push('· [R' + s.fromTurn + '-' + s.toTurn + '] ' + safeStr(summaryText(s), 100));
         });
         if (state.memoryMid && state.memoryMid.length) {
           out.push('▎中期：');
-          state.memoryMid.slice(-10).forEach(function(s){
-            out.push('· [R' + s.fromTurn + '-' + s.toTurn + '] ' + safeStr(s.summary, 120));
+          state.memoryMid.slice(-20).forEach(function(s){
+            out.push('· [R' + s.fromTurn + '-' + s.toTurn + '] ' + safeStr(summaryText(s), 120));
           });
         }
         if (state.memoryLong && state.memoryLong.length) {
           out.push('▎长期：');
           state.memoryLong.forEach(function(s){
-            out.push('· [R' + s.fromTurn + '-' + s.toTurn + '] ' + safeStr(s.summary, 150));
+            out.push('· [R' + s.fromTurn + '-' + s.toTurn + '] ' + safeStr(summaryText(s), 150));
           });
         }
         out.push('');
@@ -13496,7 +13502,7 @@ function genItemDesc_v11(name) {
   function triggerResonanceV51(srcName, srcKey) {
     if (!state.sourceResonance) state.sourceResonance = {};
     if (state.sourceResonance[srcName]) return false;
-    state.sourceResonance[srcName] = { at: Date.now(), tier: 'resonance', srcId: srcKey, _from: 'v51' };
+    state.sourceResonance[srcName] = { at: Date.now(), gameTime: state.time || '', tier: 'resonance', srcId: srcKey, _from: 'v51' };
     state.maxMp = Math.round((state.maxMp || 10) * 1.5);
     state.maxSp = Math.round((state.maxSp || 100) * 1.5);
     state.maxSanity = Math.round((state.maxSanity || 100) * 1.2);
@@ -13665,7 +13671,7 @@ function genItemDesc_v11(name) {
   window.triggerResonanceV51 = function(srcName, srcKey) {
     if (!state.sourceResonance) state.sourceResonance = {};
     if (state.sourceResonance[srcName]) return false;
-    state.sourceResonance[srcName] = { at: Date.now(), tier: 'resonance', srcId: srcKey, _from: 'v51' };
+    state.sourceResonance[srcName] = { at: Date.now(), gameTime: state.time || '', tier: 'resonance', srcId: srcKey, _from: 'v51' };
     state.maxMp = Math.round((state.maxMp || 10) * 1.5);
     state.maxSp = Math.round((state.maxSp || 100) * 1.5);
     state.maxSanity = Math.round((state.maxSanity || 100) * 1.2);
@@ -13724,7 +13730,7 @@ function genItemDesc_v11(name) {
     var roll = Math.random();
     var result;
     if (roll < 0.4) {
-      state.sourceHeld[srcName] = { at: Date.now(), tier: 'held' };
+      state.sourceHeld[srcName] = { at: Date.now(), gameTime: state.time || '', tier: 'held' };
       state._pollutionDebt = 0;
       state.maxHp = Math.round((state.maxHp || 100) * 1.3);
       state.maxMp = Math.round((state.maxMp || 10) * 2);
@@ -16519,735 +16525,6 @@ console.log(
 
 })();
  /* ▲▲▲ V61.3 结束 ▲▲▲ */
-/* ▼▼▼ V61.4 · 世界书/配方请求体与 iOS Load failed 安全层 ▼▼▼ */
-(function(){
-  'use strict';
-
-  if(window.__V61_4_REQUEST_SAFE__) return;
-  window.__V61_4_REQUEST_SAFE__ = true;
-
-  var WB_MARK = '【玩家录入的完整世界书·按需注入】';
-
-  // 普通压缩阈值
-  var SOFT_LIMIT = 78000;
-
-  // 更激进的保留范围
-  var HARD_LIMIT = 58000;
-
-  function textSize(v){
-    try{
-      if(v === undefined || v === null) return 0;
-      if(typeof v === 'string') return v.length;
-      return JSON.stringify(v).length;
-    }catch(e){
-      return 999999999;
-    }
-  }
-
-  function cloneBody(body){
-    try{
-      return JSON.parse(JSON.stringify(body));
-    }catch(e){
-      return body;
-    }
-  }
-
-  function normalizeChunk(s){
-    return String(s || '')
-      .replace(/[ \t]+/g, ' ')
-      .replace(/\n[ \t]+\n/g, '\n\n')
-      .replace(/\n{3,}/g, '\n\n')
-      .trim();
-  }
-
-  function compactWorldbook(text, aggressive){
-    var src = String(text || '');
-    var p = src.indexOf(WB_MARK);
-
-    // 没有世界书注入标记，完全不碰
-    if(p < 0) return src;
-
-    var before = src.slice(0, p).trimEnd();
-    var block = src.slice(p + WB_MARK.length).trim();
-
-    var chunks = block
-      .split(/\n*═════\n*/)
-      .map(normalizeChunk)
-      .filter(function(x){
-        return !!x;
-      });
-
-    /*
-     * V13 的世界书结构本来就是：
-     * 默认章节 + 当前行动命中的相关章节
-     *
-     * 请求过大时：
-     * 保留前两块 + 最后两块。
-     *
-     * 这样像“配方/材料”这种请求时，
-     * 当前命中的相关章节通常仍会被保留。
-     */
-    if(chunks.length > 4){
-      chunks = chunks.slice(0, 2).concat(chunks.slice(-2));
-    }
-
-    var kept = chunks.join('\n\n═════\n\n');
-
-    /*
-     * 进一步压缩中间部分，
-     * 不动 state，只动发送给 API 的文本。
-     */
-    if(aggressive && kept.length > HARD_LIMIT){
-
-      var head = kept.slice(0, 12000);
-      var tail = kept.slice(-43000);
-
-      kept =
-        head +
-        '\n\n【世界书中段已压缩，仅保留与当前请求最相关的前后文】\n\n' +
-        tail;
-
-    }else if(kept.length > 62000){
-
-      var head2 = kept.slice(0, 14000);
-      var tail2 = kept.slice(-44000);
-
-      kept =
-        head2 +
-        '\n\n【世界书中段已压缩】\n\n' +
-        tail2;
-    }
-
-    return before +
-      '\n\n' +
-      WB_MARK +
-      '\n' +
-      kept;
-  }
-
-  function compactMessages(body, aggressive){
-    var safe = cloneBody(body);
-
-    try{
-
-      if(!safe || !Array.isArray(safe.messages)){
-        return safe;
-      }
-
-      safe.messages.forEach(function(m){
-
-        if(!m || typeof m.content !== 'string'){
-          return;
-        }
-
-        if(m.content.indexOf(WB_MARK) >= 0){
-
-          m.content = compactWorldbook(
-            m.content,
-            aggressive
-          );
-
-        }
-
-      });
-
-    }catch(e){
-
-      return safe;
-
-    }
-
-    return safe;
-  }
-
-  function totalBodyText(body){
-
-    try{
-
-      if(body && Array.isArray(body.messages)){
-
-        var n = 0;
-
-        body.messages.forEach(function(m){
-
-          n += String(
-            m && m.content || ''
-          ).length;
-
-        });
-
-        return n;
-      }
-
-    }catch(e){}
-
-    return textSize(body);
-  }
-
-  function isLoadFailure(err){
-
-    var s = String(
-      err && err.message ||
-      err ||
-      ''
-    );
-
-    return /load failed|failed to fetch|networkerror|network error|the network connection was lost|fetch failed/i.test(s);
-  }
-
-  /*
-   * 包住当前 unifiedRequest。
-   *
-   * 注意：
-   * V61.2 如果已经包过 unifiedRequest，
-   * V61.4 会在它外层继续工作。
-   */
-  if(
-    typeof window.unifiedRequest === 'function' &&
-    !window.unifiedRequest.__v614RequestSafe
-  ){
-
-    var oldUnifiedV614 =
-      window.unifiedRequest;
-
-    window.unifiedRequest =
-      async function(url, key, body, timeout){
-
-        var safeBody = body;
-        var size = totalBodyText(body);
-
-        /*
-         * 第一次：
-         * 请求超过阈值才压缩。
-         */
-        try{
-
-          if(
-            size > SOFT_LIMIT &&
-            body &&
-            Array.isArray(body.messages)
-          ){
-
-            safeBody =
-              compactMessages(
-                body,
-                false
-              );
-
-          }
-
-        }catch(e){
-
-          safeBody = body;
-
-        }
-
-        /*
-         * 正常发送
-         */
-        try{
-
-          return await oldUnifiedV614.call(
-            this,
-            url,
-            key,
-            safeBody,
-            timeout
-          );
-
-        }catch(e1){
-
-          /*
-           * 只有真正的网络 Load failed
-           * 才触发第二次更强压缩。
-           */
-          if(!isLoadFailure(e1)){
-            throw e1;
-          }
-
-          try{
-
-            if(
-              body &&
-              Array.isArray(body.messages)
-            ){
-
-              var currentSize =
-                totalBodyText(safeBody);
-
-              if(
-                size > SOFT_LIMIT ||
-                currentSize > SOFT_LIMIT
-              ){
-
-                var hardBody =
-                  compactMessages(
-                    body,
-                    true
-                  );
-
-                return await oldUnifiedV614.call(
-                  this,
-                  url,
-                  key,
-                  hardBody,
-                  timeout
-                );
-              }
-
-            }
-
-          }catch(e2){
-
-            throw e2;
-
-          }
-
-          throw e1;
-        }
-
-      };
-
-    window.unifiedRequest.__v614RequestSafe = true;
-  }
-
-  /*
-   * 诊断命令：
-   * 控制台输入 v614RequestCheck()
-   */
-  window.v614RequestCheck = function(){
-
-    try{
-
-      console.log(
-        '%c[V61.4] 请求体安全检查',
-        'color:#0f766e;font-weight:700'
-      );
-
-      console.log(
-        'SOFT_LIMIT =',
-        SOFT_LIMIT,
-        'HARD_LIMIT =',
-        HARD_LIMIT
-      );
-
-      console.log(
-        '当前 unifiedRequest =',
-        window.unifiedRequest &&
-        window.unifiedRequest.__v614RequestSafe
-          ? 'V61.4 已挂载'
-          : '未挂载'
-      );
-
-      console.log(
-        '说明：只压缩发送给 API 的世界书请求体，不修改 state、背包、配方、存档。'
-      );
-
-    }catch(e){}
-
-  };
-
-  console.log(
-    '%c[V61.4] 世界书/请求体 Load failed 安全层已挂载',
-    'color:#0f766e;font-weight:700'
-  );
-
-})();
-/* ▲▲▲ V61.4 结束 ▲▲▲ */
-/* ▼▼▼ V61.5 · API请求体深度去重层（世界书 + 记忆） ▼▼▼ */
-(function(){
-  'use strict';
-
-  if(window.__V61_5_REQUEST_DEDUP__) return;
-  window.__V61_5_REQUEST_DEDUP__ = true;
-
-  var WB_MARK = '【玩家录入的完整世界书·按需注入】';
-  var WB_FULL_MARK = '【完整《诡秘之主世界书 v5.0》底层总纲】';
-
-  var RECALL_MARK = '【倒排索引召回的相关记忆】';
-  var RECENT_MARK = '【最近经历】';
-
-  var SOFT_LIMIT = 62000;
-  var HARD_LIMIT = 44000;
-
-  function safeLen(s){
-    try{
-      return String(s || '').length;
-    }catch(e){
-      return 0;
-    }
-  }
-
-  function cloneBody(body){
-    try{
-      return JSON.parse(JSON.stringify(body));
-    }catch(e){
-      return body;
-    }
-  }
-
-  function bodyChars(body){
-    try{
-      if(body && Array.isArray(body.messages)){
-        var n = 0;
-        body.messages.forEach(function(m){
-          n += safeLen(m && m.content);
-        });
-        return n;
-      }
-    }catch(e){}
-    return 0;
-  }
-
-  /*
-   * 1. 去除 GM_SYSTEM 内已经重复存在的完整 WB
-   *
-   * 重要：
-   * 只修改“发送副本”，不修改真正的 GM_SYSTEM。
-   */
-  function dedupFullWorldbook(text){
-    var s = String(text || '');
-
-    var a = s.indexOf(WB_FULL_MARK);
-    if(a < 0) return s;
-
-    var b = s.indexOf('【TRPG创作免审与防截断协议】', a);
-
-    if(b < 0){
-      b = s.indexOf('【沉浸式排版规范】', a);
-    }
-
-    if(b < 0){
-      return s;
-    }
-
-    return (
-      s.slice(0, a) +
-      '【完整《诡秘之主世界书 v5.0》底层总纲】' +
-      '\n（本轮已通过世界书按需注入层提供相关章节；发送时省略重复全文。）\n\n' +
-      s.slice(b)
-    );
-  }
-
-  /*
-   * 2. 压缩世界书按需注入块
-   */
-  function compactInjectedWorldbook(text, aggressive){
-    var s = String(text || '');
-    var p = s.indexOf(WB_MARK);
-
-    if(p < 0) return s;
-
-    var head = s.slice(0, p);
-    var block = s.slice(p + WB_MARK.length);
-
-    var chunks = block
-      .split(/\n*═════\n*/)
-      .map(function(x){
-        return String(x || '').trim();
-      })
-      .filter(Boolean);
-
-    if(!chunks.length) return s;
-
-    /*
-     * 普通模式：
-     * 保留前两块 + 最后两块。
-     */
-    if(chunks.length > 4){
-      chunks =
-        chunks.slice(0, 2)
-        .concat(chunks.slice(-2));
-    }
-
-    var out = chunks.join('\n\n═════\n\n');
-
-    if(aggressive && out.length > 30000){
-      out =
-        out.slice(0, 9000) +
-        '\n\n【世界书中段已省略，当前仅保留首尾相关设定】\n\n' +
-        out.slice(-20000);
-    }
-
-    return (
-      head +
-      WB_MARK +
-      '\n' +
-      out
-    );
-  }
-
-  /*
-   * 3. 压缩超长记忆召回
-   *
-   * 注意：
-   * 只压请求里的文本。
-   * state.memoryEntries 不动。
-   */
-  function compactRecall(text, aggressive){
-    var s = String(text || '');
-    var a = s.indexOf(RECALL_MARK);
-
-    if(a < 0) return s;
-
-    var b = s.indexOf(RECENT_MARK, a);
-
-    if(b < 0){
-      b = s.length;
-    }
-
-    var prefix = s.slice(0, a);
-    var recall = s.slice(a, b);
-    var suffix = s.slice(b);
-
-    var maxLen = aggressive ? 30000 : 60000;
-
-    if(recall.length > maxLen){
-
-      var first = aggressive ? 15000 : 30000;
-      var last = aggressive ? 15000 : 30000;
-
-      recall =
-        recall.slice(0, first) +
-        '\n\n【中间历史记忆已压缩，详细记忆仍保存在游戏本地记忆库】\n\n' +
-        recall.slice(-last);
-    }
-
-    return prefix + recall + suffix;
-  }
-
-  /*
-   * 4. 对每条消息做发送前处理
-   */
-  function compactMessages(body, aggressive){
-    var safe = cloneBody(body);
-
-    try{
-
-      if(!safe || !Array.isArray(safe.messages)){
-        return safe;
-      }
-
-      safe.messages.forEach(function(m){
-
-        if(!m || typeof m.content !== 'string'){
-          return;
-        }
-
-        /*
-         * system：
-         * 去除底层完整 WB 重复内容
-         */
-        if(m.role === 'system'){
-
-          m.content =
-            dedupFullWorldbook(m.content);
-
-          m.content =
-            compactInjectedWorldbook(
-              m.content,
-              aggressive
-            );
-        }
-
-        /*
-         * user：
-         * 压缩超长记忆召回
-         */
-        if(m.role === 'user'){
-
-          m.content =
-            compactRecall(
-              m.content,
-              aggressive
-            );
-        }
-
-      });
-
-    }catch(e){
-      return safe;
-    }
-
-    return safe;
-  }
-
-  function isLoadFailure(err){
-
-    var s = '';
-
-    try{
-      s = String(
-        err &&
-        err.message ||
-        err ||
-        ''
-      );
-    }catch(e){}
-
-    return /load failed|failed to fetch|networkerror|network error|fetch failed|connection was lost/i.test(s);
-  }
-
-  if(
-    typeof window.unifiedRequest === 'function' &&
-    !window.unifiedRequest.__v615Dedup
-  ){
-
-    var oldUnifiedV615 =
-      window.unifiedRequest;
-
-    window.unifiedRequest =
-      async function(url, key, body, timeout){
-
-        var original = body;
-        var size = bodyChars(body);
-
-        /*
-         * 第一次：
-         * 只有请求已经比较大时才做去重。
-         */
-        var firstBody = original;
-
-        try{
-
-          if(
-            size > SOFT_LIMIT &&
-            body &&
-            Array.isArray(body.messages)
-          ){
-
-            firstBody =
-              compactMessages(
-                body,
-                false
-              );
-          }
-
-        }catch(e){
-          firstBody = original;
-        }
-
-        /*
-         * 正常请求
-         */
-        try{
-
-          return await oldUnifiedV615.call(
-            this,
-            url,
-            key,
-            firstBody,
-            timeout
-          );
-
-        }catch(e1){
-
-          /*
-           * 只对真正的 Load failed 类错误
-           * 再做一次强制缩减。
-           */
-          if(!isLoadFailure(e1)){
-            throw e1;
-          }
-
-          try{
-
-            if(
-              original &&
-              Array.isArray(original.messages)
-            ){
-
-              var hardBody =
-                compactMessages(
-                  original,
-                  true
-                );
-
-              var hardSize =
-                bodyChars(hardBody);
-
-              console.warn(
-                '[V61.5] Load failed，执行深度请求压缩：',
-                size,
-                '→',
-                hardSize,
-                'chars'
-              );
-
-              return await oldUnifiedV615.call(
-                this,
-                url,
-                key,
-                hardBody,
-                timeout
-              );
-            }
-
-          }catch(e2){
-            throw e2;
-          }
-
-          throw e1;
-        }
-      };
-
-    window.unifiedRequest.__v615Dedup = true;
-  }
-
-  window.v615Check = function(){
-
-    try{
-
-      console.log(
-        '%c[V61.5] API请求去重检查',
-        'color:#b45309;font-weight:700'
-      );
-
-      console.log(
-        'unifiedRequest：',
-        window.unifiedRequest &&
-        window.unifiedRequest.__v615Dedup
-          ? 'V61.5 已挂载'
-          : '未挂载'
-      );
-
-      console.log(
-        'GM_SYSTEM 当前完整长度：',
-        typeof GM_SYSTEM === 'string'
-          ? GM_SYSTEM.length
-          : '未知'
-      );
-
-      console.log(
-        '当前内存条目：',
-        Array.isArray(state.memoryEntries)
-          ? state.memoryEntries.length
-          : 0
-      );
-
-      console.log(
-        '当前背包：',
-        state.bag
-      );
-
-      console.log(
-        '当前配方：',
-        state.recipes
-      );
-
-    }catch(e){
-      console.warn('[V61.5] 检查失败', e);
-    }
-
-  };
-
-  console.log(
-    '%c[V61.5] 世界书重复内容 + 超长记忆请求去重层已挂载',
-    'color:#b45309;font-weight:700'
-  );
-
-})();
-/* ▲▲▲ V61.5 结束 ▲▲▲ */
 /* ▼▼▼ V62.6 · NPC物品鉴识 + 逐轮物品更新安全层 ▼▼▼ */
 (function(){
   'use strict';
@@ -20728,9 +20005,7 @@ console.log(
       '身材：' + (state.appearanceBody || ''),
       '穿着：' + (state.appearanceCloth || ''),
       '当前神态：' + (state.appearanceExpression || ''),
-      '非凡能力：' + arrV64(state.abilities).map(function(a){
-        return a && a.name ? a.name : String(a);
-      }).join('、'),
+      '非凡能力：' + abilityText(arrV64(state.abilities)),
       '当前装备：' + (playerEquip.join('；') || '无'),
       '背包：' + (playerBag.join('、') || '空'),
       '封印物：' + (sealed.join('、') || '无'),
@@ -28294,7 +27569,7 @@ console.log(
   var WB_FULL_MARK = '【完整《诡秘之主世界书 v5.0》底层总纲】';
   var RECALL_MARK = '【倒排索引召回的相关记忆】';
   var RECENT_MARK = '【最近经历】';
-  var CHAT_TIMEOUT_MS = 120000;
+  var CHAT_TIMEOUT_MS = 240000;
   var activeTargetIndex = null;
   var lastFailure = null;
   var apiQueue = Promise.resolve();
@@ -28400,8 +27675,8 @@ console.log(
         .trim();
     }).filter(Boolean);
 
-    if (chunks.length > 4) {
-      chunks = chunks.slice(0, 2).concat(chunks.slice(-2));
+    if (chunks.length > 8) {
+      chunks = chunks.slice(0, 4).concat(chunks.slice(-4));
     }
 
     var kept = chunks.join('\n\n═════\n\n');
@@ -28446,12 +27721,12 @@ console.log(
     if (b < 0) b = s.length;
 
     var recall = s.slice(a, b);
-    var limit = aggressive ? 30000 : 60000;
+    var limit = aggressive ? 120000 : 200000;
     if (recall.length <= limit) return s;
 
-    recall = recall.slice(0, aggressive ? 15000 : 30000) +
+    recall = recall.slice(0, aggressive ? 60000 : 100000) +
       '\n\n【中间历史记忆仅在本次请求中压缩；本地记忆库未修改】\n\n' +
-      recall.slice(-(aggressive ? 15000 : 30000));
+      recall.slice(-(aggressive ? 60000 : 100000));
 
     return s.slice(0, a) + recall + s.slice(b);
   }
@@ -28468,7 +27743,7 @@ console.log(
 
     var size = messageSize(out);
 
-    if (size > 200000) {
+    if (size > 600000) {
       // 第一阶段优先压缩重复注入块和长记忆，尽量保留内置原著资料。
       out.messages.forEach(function(m) {
         if (!m || typeof m.content !== 'string') return;
@@ -28481,7 +27756,7 @@ console.log(
       });
     }
 
-    if (messageSize(out) > 400000) {
+    if (messageSize(out) > 850000) {
       // 只有请求仍然很大、且另有按需注入世界书时，才省略重复全文。
       out.messages.forEach(function(m) {
         if (!m || typeof m.content !== 'string') return;
@@ -30849,7 +30124,7 @@ console.log(
       var st = window.state;
       if (!st || !Array.isArray(st.worldEvents) || !st.worldEvents.length) return '';
 
-      var arr = st.worldEvents.slice(-5);
+      var arr = st.worldEvents.slice(-10);
       var lines = ['【世界动态】（最近 ' + arr.length + ' 条，正在发生的事）'];
       arr.forEach(function (e) {
         if (!e) return;
@@ -30901,6 +30176,13 @@ console.log(
         var r = innerSave.apply(this, arguments);
         try { V.resumeLeft = 5; } catch (e) {}
         try { if (window.recalcPlayerMax) window.recalcPlayerMax(); } catch (e) {}
+        try {
+          if (window.state && Array.isArray(window.state.abilities)) {
+            window.state.abilities = window.state.abilities.filter(function(a){
+              return a && a.name !== '凡俗体魄' && a.name !== '世俗求生';
+            });
+          }
+        } catch (e) {}
         return r;
       };
       window.applySave.__v103u = true;
@@ -30928,6 +30210,7 @@ console.log(
         cards: cards.length, s: sCount, a: aCount,
         npc: npc,
         short: (st.memoryShort || []).length,
+        era: (st.memoryEra || []).length,
         mid: (st.memoryMid || []).length,
         long: (st.memoryLong || []).length,
         injected: st._lastInjectedChars || 0
@@ -30942,7 +30225,7 @@ console.log(
       html += '<div style="margin-top:14px;padding:10px 12px;background:#fbf7ee;border:1px solid #d8c7a5;border-radius:8px;font-size:11px;line-height:1.8">';
       html += '<div style="font-weight:700;color:#4a3920;margin-bottom:6px">🗂️ 结构化记忆</div>';
       html += '<div>事件卡：<b>' + k.cards + '</b> · S 级：<b>' + k.s + '</b> · A 级：<b>' + k.a + '</b></div>';
-      html += '<div>NPC 记忆：<b>' + k.npc + '</b> 条 · 摘要：短 <b>' + k.short + '</b> / 中 <b>' + k.mid + '</b> / 长 <b>' + k.long + '</b></div>';
+      html += '<div>NPC 记忆：<b>' + k.npc + '</b> 条 · 摘要：短 <b>' + k.short + '</b> / 中 <b>' + k.mid + '</b> / 长 <b>' + k.long + '</b> / 纪元 <b>' + k.era + '</b></div>';
       html += '<div>上轮注入：<b>' + (k.injected || '—') + '</b> 字</div>';
 
       var facts = '';
@@ -30968,6 +30251,7 @@ console.log(
       }
 
       var sums = [];
+      if (st.memoryEra && st.memoryEra.length) sums.push(['纪元', st.memoryEra[st.memoryEra.length - 1]]);
       if (st.memoryLong && st.memoryLong.length) sums.push(['长期', st.memoryLong[st.memoryLong.length - 1]]);
       if (st.memoryMid && st.memoryMid.length) sums.push(['中期', st.memoryMid[st.memoryMid.length - 1]]);
       if (st.memoryShort && st.memoryShort.length) sums.push(['短期', st.memoryShort[st.memoryShort.length - 1]]);
@@ -30975,7 +30259,7 @@ console.log(
         html += '<div style="margin-top:8px;font-weight:700;color:#4a3920">摘要</div>';
         sums.forEach(function (x) {
           var m = x[1] || {};
-          var txt = m.text || m.summary || '';
+          var txt = summaryText(m);
           var _from = (m.fromTurn != null ? m.fromTurn : m.from);
           var _to = (m.toTurn != null ? m.toTurn : m.to);
           html += '<div style="padding:3px 0"><b>' + x[0] + '</b>' +
