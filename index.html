@@ -2174,7 +2174,7 @@ function abilityText(list, maxDesc) {
 }
 function isAbilityContext(action) {
   var t = String(action || '');
-  if (state.combat && state.combat.active) return true;
+  if ((state.combat && state.combat.active) || (state._v60Combat && state._v60Combat.active)) return true;
   return /(使用|施展|发动|催动|能力|权柄|战斗|交手|攻击|防御|格挡|闪避|灵视|占卜|仪式|魔药|失控|施法|开枪|格斗|非凡)/.test(t);
 }
 function fullAbilityBlock(action) {
@@ -2572,6 +2572,11 @@ async function execute() {
       _softFacts: state._softFacts, _softFactAsked: state._softFactAsked,
       _activeTasks: state._activeTasks, _worldTimelineLog: state._worldTimelineLog,
       _slotId: state._slotId,
+      combat: state.combat,
+      _v60Combat: state._v60Combat,
+      _pendingSourceNotice: state._pendingSourceNotice,
+      _pendingHoldNotice: state._pendingHoldNotice,
+      _pendingAscendNotice: state._pendingAscendNotice,
       hp: state.hp, maxHp: state.maxHp, mp: state.mp, maxMp: state.maxMp,
       sp: state.sp, maxSp: state.maxSp, sanity: state.sanity, maxSanity: state.maxSanity,
       path: state.path, seq: state.seq, digest: state.digest, abilities: state.abilities,
@@ -26774,7 +26779,7 @@ console.log(
     ){
       age = Math.max(
         1,
-        Math.min(150, baseAge + year - Number(lock.baseYear))
+        baseAge + year - Number(lock.baseYear)
       );
     }
 
