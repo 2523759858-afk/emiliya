@@ -1350,10 +1350,12 @@ function renderAbilities() {
     var defs = PATH_DEFAULT_ABILITIES[state.path] || [];
     state.abilities = defs.slice(); abs = state.abilities;
   }
-  abs.forEach(function(ab) {
+  abs.forEach(function(raw) {
+    var ab = normalizeAbility(raw);
+    if (!ab || !ab.name) return;
     var chip = document.createElement('div');
     chip.className = 'ability-chip'; chip.innerHTML = '⚡ ' + ab.name;
-    chip.onclick = function() { alert('【非凡权柄 · ' + ab.name + '】\n' + ab.desc); };
+    chip.onclick = function() { alert('【非凡权柄 · ' + ab.name + '】\n' + (ab.desc || '暂无描述')); };
     box.appendChild(chip);
   });
 }
@@ -2135,18 +2137,59 @@ function summaryText(s) {
   }
   return s.summary || s.text || '';
 }
-/* 能力注入：名字 + 一句说明；兼容字符串与对象 */
+/* 能力注入：名字 + 说明；兼容字符串/对象/旧档 */
+function defaultAbilityDesc(name) {
+  try {
+    if (typeof PATH_DEFAULT_ABILITIES === 'undefined' || !name) return '';
+    for (var p in PATH_DEFAULT_ABILITIES) {
+      var arr = PATH_DEFAULT_ABILITIES[p] || [];
+      for (var i = 0; i < arr.length; i++) {
+        if (arr[i] && arr[i].name === name) return arr[i].desc || '';
+      }
+    }
+  } catch(e) {}
+  return '';
+}
+function normalizeAbility(a) {
+  if (!a) return null;
+  if (typeof a === 'string') {
+    var nm = a.trim();
+    if (!nm) return null;
+    return { name: nm, desc: defaultAbilityDesc(nm) };
+  }
+  if (typeof a !== 'object') return null;
+  var n = a.name || a.title || '';
+  if (!n) return null;
+  var d = a.desc || a.description || a.effect || defaultAbilityDesc(n);
+  return { name: String(n), desc: String(d || '') };
+}
 function abilityText(list, maxDesc) {
-  maxDesc = maxDesc || 50;
-  return (Array.isArray(list) ? list : []).map(function (a) {
-    if (!a) return '';
-    if (typeof a === 'string') return a;
-    var n = a.name || '';
-    if (!n) return '';
-    var d = a.desc || a.description || a.effect || '';
-    d = String(d || '').replace(/\s+/g, ' ').slice(0, maxDesc);
-    return d ? (n + '（' + d + '）') : n;
+  maxDesc = maxDesc || 200;
+  return (Array.isArray(list) ? list : []).map(function (raw) {
+    var a = normalizeAbility(raw);
+    if (!a || !a.name) return '';
+    var d = String(a.desc || '').replace(/\s+/g, ' ').slice(0, maxDesc);
+    return d ? (a.name + '（' + d + '）') : a.name;
   }).filter(Boolean).join('；');
+}
+function isAbilityContext(action) {
+  var t = String(action || '');
+  if (state.combat && state.combat.active) return true;
+  return /(使用|施展|发动|催动|能力|权柄|战斗|交手|攻击|防御|格挡|闪避|灵视|占卜|仪式|魔药|失控|施法|开枪|格斗|非凡)/.test(t);
+}
+function fullAbilityBlock(action) {
+  if (!isAbilityContext(action)) return '';
+  var list = (state.abilities || []).map(normalizeAbility).filter(function(a){ return a && a.name; });
+  if (!list.length) return '';
+  var t = String(action || '');
+  var picked = list.filter(function(a){ return t.indexOf(a.name) >= 0; });
+  if (!picked.length) picked = list;
+  picked = picked.slice(0, 8);
+  var lines = picked.map(function(a){
+    return '· ' + a.name + '：' + String(a.desc || '暂无描述').replace(/\s+/g, ' ');
+  });
+  return '\n【本轮相关能力·完整描述】\n' + lines.join('\n') +
+    '\n（本轮涉及能力或战斗，请按以上完整描述判定效果）';
 }
 var PATH_ICONS = {
  "观众": "data:image/webp;base64,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",
@@ -2557,9 +2600,11 @@ async function execute() {
     return '【在场:' + n + '】' + r.identity + ' 序列:' + r.seq + ' 动作:' + r.action + ' 心声:' + r.thought + ' 好感:' + (r.fav || '平淡') + '(' + (r.favVal||30) + '/100)';
   }).join('\n');
 
+  var fullAb = fullAbilityBlock(action);
   var userPrompt = '【当前时刻】' + state.time + ' · 地点: ' + state.location + ' · 资产: ' + JSON.stringify(state.currency) + '\n' +
     '【主角档案】' + state.meta.playerName + ' (' + state.meta.gender + ', ' + state.meta.age + '岁) 途径: ' + state.path + ' 序列: ' + state.seq + ' 消化度: ' + state.digest + '%\n' +
-    '【已掌握非凡能力】' + (abilityText(state.abilities) || '凡俗无能力') + '\n' +
+    '【已掌握非凡能力】' + (abilityText(state.abilities, 60) || '凡俗无能力') + '\n' +
+    (fullAb ? fullAb + '\n' : '') +
     '【量度状态】HP: ' + state.hp + '/' + state.maxHp + ' MP: ' + state.mp + '/' + state.maxMp + ' SAN: ' + state.sanity + '/' + state.maxSanity + '\n' +
     '【持有封印物】' + (state.sealed.join(', ') || '无') + '\n' +
     '【随身背包】' + (state.bag.map(function(b){return b.name+'x'+b.qty;}).join('、') || '空') + '\n' +
@@ -9732,7 +9777,7 @@ function genItemDesc_v11(name) {
     L.push('');
     L.push('▎玩家位格与数值');
     L.push('· 途径：' + (state.path || '凡俗') + ' · 序列：' + (state.seq || '凡俗') + ' · 消化度：' + (state.digest || 0) + '%');
-    var abs = abilityText(state.abilities);
+    var abs = abilityText(state.abilities, 60);
     if (abs) L.push('· 能力：' + abs);
     L.push('· HP ' + state.hp + '/' + state.maxHp +
            ' · MP ' + state.mp + '/' + state.maxMp +
@@ -12535,7 +12580,7 @@ function genItemDesc_v11(name) {
     if (state.identity) L.push('· 身份：' + safeStr(state.identity, 60));
     if (state.residence) L.push('· 居所：' + safeStr(state.residence, 60));
     L.push('· 途径：' + (state.path || '凡俗') + ' · 序列：' + (state.seq || '凡俗') + ' · 消化度：' + (state.digest || 0) + '%');
-    var abs = abilityText(state.abilities);
+    var abs = abilityText(state.abilities, 60);
     if (abs) L.push('· 能力：' + abs);
     var face = state.appearanceFace || state.appearance || '';
     if (face) L.push('· 长相：' + safeStr(face, 80));
@@ -20039,7 +20084,7 @@ console.log(
       '身材：' + (state.appearanceBody || ''),
       '穿着：' + (state.appearanceCloth || ''),
       '当前神态：' + (state.appearanceExpression || ''),
-      '非凡能力：' + abilityText(arrV64(state.abilities)),
+      '非凡能力：' + abilityText(arrV64(state.abilities), 60),
       '当前装备：' + (playerEquip.join('；') || '无'),
       '背包：' + (playerBag.join('、') || '空'),
       '封印物：' + (sealed.join('、') || '无'),
