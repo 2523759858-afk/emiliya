@@ -178,7 +178,10 @@ header{background:#f3ecdb;border-bottom:1.5px solid var(--bd-dark);padding:8px 1
 .loading{color:var(--tx-dim);font-style:italic;padding:8px 0;font-size:12px;display:flex;align-items:center;gap:12px}
 .loading::before{content:"";width:14px;height:14px;border:2px solid var(--bronze-main);border-top-color:transparent;border-radius:50%;animation:sp .8s linear infinite}
 @keyframes sp{to{transform:rotate(360deg)}}
-.options{padding:10px 18px;display:flex;flex-wrap:wrap;gap:8px;border-top:1px solid var(--bd-bronze);background:#f4ece0;max-height:110px;overflow-y:auto}
+.options{padding:6px 18px 10px;border-top:1px solid var(--bd-bronze);background:#f4ece0}
+.options-head{display:flex;justify-content:space-between;align-items:center;font-size:10px;color:var(--tx-dim);padding:3px 0 6px;letter-spacing:1px}
+.options-toggle{cursor:pointer;color:var(--bronze-dark);font-weight:700}
+.options-inner{display:flex;flex-wrap:wrap;gap:8px;max-height:110px;overflow-y:auto}
 .opt-btn{background:#fffefb;border:1px solid var(--bd-bronze);color:var(--bronze-dark);padding:5px 12px;border-radius:16px;font-size:11px;font-weight:600;cursor:pointer}
 .opt-btn:hover{background:#ede3cb;border-color:var(--bronze-dark)}
 .input-area{padding:12px 18px;display:flex;gap:10px;border-top:1px solid var(--bd-bronze);background:#f8f2e6;flex-shrink:0}
@@ -659,7 +662,10 @@ header{background:#f3ecdb;border-bottom:1.5px solid var(--bd-dark);padding:8px 1
 
   <div class="chat-area">
     <div class="log" id="log"></div>
-    <div class="options" id="options"></div>
+    <div class="options" id="options">
+  <div class="options-head"><span>行动选项</span><span class="options-toggle" id="optionsToggle" onclick="toggleOptionsFold()">收起</span></div>
+  <div class="options-inner" id="optionsInner"></div>
+</div>
     <div class="input-area">
       <input type="text" id="actionInput" placeholder="输入你的行动或意志……" autocomplete="off">
       <button id="execBtn">推进命运</button>
@@ -1159,6 +1165,14 @@ function renderMemIndex(filter) {
    第八部分 · 界面渲染（含 DOM 截断）
    ============================================================ */
 function $(id) { return document.getElementById(id); }
+function toggleOptionsFold() {
+  var inner = $('optionsInner');
+  var t = $('optionsToggle');
+  if (!inner) return;
+  var hide = inner.style.display !== 'none';
+  inner.style.display = hide ? 'none' : 'flex';
+  if (t) t.textContent = hide ? '展开' : '收起';
+}
 function toast(m) {
   var t = $('toast'); t.textContent = m; t.classList.add('show');
   setTimeout(function() { t.classList.remove('show'); }, 3000);
@@ -1453,19 +1467,30 @@ function renderSrc() {
   });
 }
 
+function displayNpcStatus(r) {
+  if (!r) return '不在场';
+  if (r.dead === true) return '死亡';
+  var s = String(r.status || '').trim();
+  if (!s) return '不在场';
+  if (/死亡|已死|尸体|陨落|阵亡/.test(s)) return '死亡';
+  if (/不在场|离开|外出|失踪|远方|被囚|关押|被俘|流放/.test(s)) return '不在场';
+  return '在场';
+}
+
 function renderRel() {
   var l = $('relList'); l.innerHTML = '';
   var ks = Object.keys(state.relations);
   if (!ks.length) { l.innerHTML = '<div style="color:var(--tx-dim);font-size:11px;padding:8px 0;font-style:italic">初临此界，你尚未结识任何有记载的非凡者或世俗羁绊。</div>'; return; }
   ks.forEach(function(n) {
     var r = state.relations[n];
-    var h = r.status === '在场';
+    var stText = displayNpcStatus(r);
+    var h = stText === '在场';
     var favV = r.favVal !== undefined ? r.favVal : (r.fav === '崇拜' ? 100 : r.fav === '信任' ? 80 : r.fav === '友好' ? 60 : r.fav === '平淡' ? 30 : r.fav === '审视' ? 30 : 15);
     r.favVal = favV;
     var d = document.createElement('div'); d.className = 'rel-item';
     d.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center">' +
         '<div style="display:flex;align-items:center;gap:10px">' + avatarHTML(n, r.avatar) +
-          '<div><div class="rel-name">' + (angelKing(n, r) ? '<span class="angel-crown">👑</span>' : '') + n + '</div><div style="font-size:10px;margin-top:2px;color:var(--tx-dim)"><span style="color:' + (h ? 'var(--green)' : 'var(--tx-dim)') + '">● ' + (r.status || '不在场') + '</span> · <span class="' + (angelKing(n, r) ? 'seq-天使王' : seqClass(r.seq)) + '">' + (r.seq || '凡俗') + '</span></div></div>' +
+          '<div><div class="rel-name">' + (angelKing(n, r) ? '<span class="angel-crown">👑</span>' : '') + n + '</div><div style="font-size:10px;margin-top:2px;color:var(--tx-dim)"><span style="color:' + (h ? 'var(--green)' : 'var(--tx-dim)') + '">● ' + (stText || '不在场') + '</span> · <span class="' + (angelKing(n, r) ? 'seq-天使王' : seqClass(r.seq)) + '">' + (r.seq || '凡俗') + '</span></div></div>' +
         '</div><div style="font-size:11px;color:var(--bronze-dark);font-weight:700">' + (r.fav || '冷淡') + '</div></div>' +
       '<div class="fav-bar-container"><div class="fav-bar-bg"><div class="fav-bar-fill" style="width:' + favV + '%;"></div></div><span class="fav-bar-val">' + favV + '/100</span></div>';
     d.onclick = function() { openCharModal(n); };
@@ -1528,6 +1553,7 @@ function openCharModal(n) {
   if (!r) { showPublicDossier(n); return; }
   $('charName').innerHTML = n + ' <span id="closeCharBtnInner">×</span>';
   $('charAvatarWrap').innerHTML = avatarHTML(n, r.avatar, 'big');
+  var stText = displayNpcStatus(r);
   var favV = r.favVal !== undefined ? r.favVal : 30;
   $('ctab-basic').innerHTML =
     '<div class="row"><span>性别</span><span class="v">' + (r.gender || '未知') + '</span></div>' +
@@ -1538,7 +1564,7 @@ function openCharModal(n) {
   $('ctab-relation').innerHTML =
     '<div class="row"><span>对玩家态度</span><span class="v gold">' + (r.fav || '审视') + '</span></div>' +
     '<div style="margin:8px 0 12px"><div style="font-size:10px;color:#db2777;font-weight:700;display:flex;justify-content:space-between;margin-bottom:3px"><span>好感度量度</span><span>' + favV + ' / 100</span></div><div class="fav-bar-bg"><div class="fav-bar-fill" style="width:' + favV + '%;"></div></div></div>' +
-    '<div class="row"><span>当前状态</span><span class="v">' + (r.status || '在场') + '</span></div>' +
+    '<div class="row"><span>当前状态</span><span class="v">' + (stText || '在场') + '</span></div>' +
     '<div style="margin-top:10px;padding:10px;background:#f5efe2;border-radius:6px"><div style="color:var(--cosmic-blue);font-size:11px;font-weight:700">正在采取的举止:</div><div style="font-size:11px;color:var(--tx-sub);margin-top:2px">' + (r.action || '无明显举动') + '</div></div>' +
     '<div style="margin-top:8px;padding:10px;background:#f5efe2;border-radius:6px"><div style="color:var(--thought-purple);font-size:11px;font-weight:700">灵性感应·当下心声:</div><div style="font-size:11px;color:var(--thought-purple);font-style:italic;margin-top:2px">"' + (r.thought || '不可窥探') + '"</div></div>';
   var hpC = r.hp !== undefined ? r.hp : 100, hpM = r.maxHp !== undefined ? r.maxHp : hpC;
@@ -2377,13 +2403,15 @@ function applyAI(data, userActionText) {
   }
 
   if (Array.isArray(data.options)) {
-    var b = $('options'); b.innerHTML = '';
+    var b = $('optionsInner') || $('options'); b.innerHTML = '';
     data.options.forEach(function(o) {
       var el = document.createElement('button');
       el.className = 'opt-btn'; el.textContent = o;
       el.onclick = function() { $('actionInput').value = o; execute(); };
-      b.appendChild(el);
+      b.appendChild(el); 
     });
+    b.style.display = 'flex';
+    var _ot = $('optionsToggle'); if (_ot) _ot.textContent = '收起';
   }
   renderUI();
 }
@@ -6090,7 +6118,8 @@ function genItemDesc_v11(name) {
 
     ks.forEach(function(n) {
       var r = state.relations[n];
-      var h = r.status === '在场';
+      var stText = displayNpcStatus(r);
+    var h = stText === '在场';
       var favV = r.favVal !== undefined ? r.favVal :
         (r.fav === '崇拜' ? 100 : r.fav === '信任' ? 80 : r.fav === '友好' ? 60 : r.fav === '平淡' ? 30 : r.fav === '审视' ? 30 : 15);
       r.favVal = favV;
@@ -6106,7 +6135,7 @@ function genItemDesc_v11(name) {
       d.className = 'rel-item';
       d.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center">' +
           '<div style="display:flex;align-items:center;gap:10px">' + avatarHTML(n, r.avatar) +
-            '<div><div class="rel-name">' + (angelKing(n, r) ? '<span class="angel-crown">👑</span>' : '') + n + '</div><div style="font-size:10px;margin-top:2px;color:var(--tx-dim)"><span style="color:' + (h ? 'var(--green)' : 'var(--tx-dim)') + '">● ' + (r.status || '不在场') + '</span> · ' + seqHtml + '</div></div>' +
+            '<div><div class="rel-name">' + (angelKing(n, r) ? '<span class="angel-crown">👑</span>' : '') + n + '</div><div style="font-size:10px;margin-top:2px;color:var(--tx-dim)"><span style="color:' + (h ? 'var(--green)' : 'var(--tx-dim)') + '">● ' + (stText || '不在场') + '</span> · ' + seqHtml + '</div></div>' +
           '</div><div style="font-size:11px;color:var(--bronze-dark);font-weight:700">' + (r.fav || '冷淡') + '</div></div>' +
         '<div class="fav-bar-container"><div class="fav-bar-bg"><div class="fav-bar-fill" style="width:' + favV + '%;"></div></div><span class="fav-bar-val">' + favV + '/100</span></div>';
       d.onclick = function() { openCharModal(n); };
@@ -14828,7 +14857,7 @@ function genItemDesc_v11(name) {
     if(r.seq && r.seq!=='凡人') c.enemySeq=r.seq;
     else if(c.enemySeq){ r.seq=c.enemySeq; }
 
-    if(c.enemyStatus) r.status=c.enemyStatus;
+    if(c.enemyStatus && /死亡|倒下|失去战斗能力|失去意识|被击败|重伤|濒死|被俘|昏迷/.test(c.enemyStatus)) r.status=c.enemyStatus;
     if(c.enemyHp<=0){
       markCombatNpcDeadV60(hit,'战斗死亡');
       c.active=false;
@@ -14931,7 +14960,7 @@ function genItemDesc_v11(name) {
     c.active=false;
     c.lastOutcome=String(reason||'战斗结束');
     c.endedAt=state.time||'';
-    if(hitEnd && !hitEnd.r.dead && /战斗中|交战|交锋/.test(String(hitEnd.r.status||''))){
+    if(hitEnd && !hitEnd.r.dead && /战斗中|战斗|交战|交锋|对峙/.test(String(hitEnd.r.status||''))){
       hitEnd.r.status='在场';
     }
     v60CombatExpanded=false;
