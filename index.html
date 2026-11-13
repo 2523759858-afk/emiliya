@@ -179,7 +179,7 @@ header{background:#f3ecdb;border-bottom:1.5px solid var(--bd-dark);padding:8px 1
 .loading::before{content:"";width:14px;height:14px;border:2px solid var(--bronze-main);border-top-color:transparent;border-radius:50%;animation:sp .8s linear infinite}
 @keyframes sp{to{transform:rotate(360deg)}}
 .options{padding:6px 18px 10px;border-top:1px solid var(--bd-bronze);background:#f4ece0}
-.options-head{display:flex;justify-content:space-between;align-items:center;font-size:10px;color:var(--tx-dim);padding:3px 0 6px;letter-spacing:1px}
+.options-head{display:flex;justify-content:flex-end;align-items:center;font-size:10px;color:var(--tx-dim);padding:2px 0 5px;letter-spacing:1px}
 .options-toggle{cursor:pointer;color:var(--bronze-dark);font-weight:700}
 .options-inner{display:flex;flex-wrap:wrap;gap:8px;max-height:110px;overflow-y:auto}
 .opt-btn{background:#fffefb;border:1px solid var(--bd-bronze);color:var(--bronze-dark);padding:5px 12px;border-radius:16px;font-size:11px;font-weight:600;cursor:pointer}
@@ -663,7 +663,7 @@ header{background:#f3ecdb;border-bottom:1.5px solid var(--bd-dark);padding:8px 1
   <div class="chat-area">
     <div class="log" id="log"></div>
     <div class="options" id="options">
-  <div class="options-head"><span>行动选项</span><span class="options-toggle" id="optionsToggle" onclick="toggleOptionsFold()">收起</span></div>
+  <div class="options-head"><span class="options-toggle" id="optionsToggle" onclick="toggleOptionsFold()">收起</span></div>
   <div class="options-inner" id="optionsInner"></div>
 </div>
     <div class="input-area">
