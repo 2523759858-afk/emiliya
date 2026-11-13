@@ -2577,6 +2577,10 @@ async function execute() {
       _pendingSourceNotice: state._pendingSourceNotice,
       _pendingHoldNotice: state._pendingHoldNotice,
       _pendingAscendNotice: state._pendingAscendNotice,
+      _v60Dead: state._v60Dead,
+      dead: state.dead,
+      _v60DeathRecord: state._v60DeathRecord,
+      _v60Critical: state._v60Critical,
       hp: state.hp, maxHp: state.maxHp, mp: state.mp, maxMp: state.maxMp,
       sp: state.sp, maxSp: state.maxSp, sanity: state.sanity, maxSanity: state.maxSanity,
       path: state.path, seq: state.seq, digest: state.digest, abilities: state.abilities,
@@ -14715,7 +14719,9 @@ function genItemDesc_v11(name) {
   function ensureCombat(){
     if(!state._v60Combat){
       state._v60Combat={
-        active:false, enemyName:'', enemyHp:0, enemyMaxHp:0, enemyStatus:'', enemyPath:'', enemySeq:'',
+        active:false, enemyName:'', enemyHp:0, enemyMaxHp:0,
+        enemyMp:0, enemyMaxMp:0, enemySp:0, enemyMaxSp:0,
+        enemyStatus:'', enemyPath:'', enemySeq:'',
         turn:0, canFlee:true, lastOutcome:'', lastAction:'', startedAt:'', endedAt:''
       };
     }
@@ -14735,6 +14741,10 @@ function genItemDesc_v11(name) {
     if(cd.enemyName!==undefined) c.enemyName=String(cd.enemyName||'');
     if(cd.enemyHp!==undefined) c.enemyHp=Math.max(0,num(cd.enemyHp,c.enemyHp||0));
     if(cd.enemyMaxHp!==undefined) c.enemyMaxHp=Math.max(0,num(cd.enemyMaxHp,c.enemyMaxHp||0));
+    if(cd.enemyMp!==undefined) c.enemyMp=Math.max(0,num(cd.enemyMp,c.enemyMp||0));
+    if(cd.enemyMaxMp!==undefined) c.enemyMaxMp=Math.max(0,num(cd.enemyMaxMp,c.enemyMaxMp||0));
+    if(cd.enemySp!==undefined) c.enemySp=Math.max(0,num(cd.enemySp,c.enemySp||0));
+    if(cd.enemyMaxSp!==undefined) c.enemyMaxSp=Math.max(0,num(cd.enemyMaxSp,c.enemyMaxSp||0));
     if(cd.enemyStatus!==undefined) c.enemyStatus=String(cd.enemyStatus||'');
     if(cd.enemyPath!==undefined) c.enemyPath=String(cd.enemyPath||'');
     if(cd.enemySeq!==undefined) c.enemySeq=String(cd.enemySeq||'');
@@ -14745,6 +14755,88 @@ function genItemDesc_v11(name) {
     if(!c.active) c.endedAt=state.time||c.endedAt||'';
     if(c.enemyMaxHp>0 && c.enemyHp>c.enemyMaxHp) c.enemyHp=c.enemyMaxHp;
     return c;
+  }
+
+  /* ==================== 2.5 NPC ↔ 战斗联动 ==================== */
+  function findCombatNpcV60(name){
+    var key=String(name||'').trim();
+    if(!key) return null;
+    var rels=state.relations||{};
+    if(rels[key]) return {key:key, r:rels[key]};
+    var norm=key.replace(/[\s·•・]/g,'');
+    var hits=[];
+    Object.keys(rels).forEach(function(k){
+      var kn=String(k).replace(/[\s·•・]/g,'');
+      if(kn===norm || kn.indexOf(norm)>=0 || norm.indexOf(kn)>=0) hits.push(k);
+    });
+    if(hits.length===1) return {key:hits[0], r:rels[hits[0]]};
+    return null;
+  }
+
+  function markCombatNpcDeadV60(hit, reason){
+    if(!hit || !hit.r) return;
+    var r=hit.r;
+    r.hp=0;
+    r.status='死亡';
+    r.dead=true;
+    r.deathAt=state.time||'';
+    r.deathReason=String(reason||'战斗死亡');
+    try{ addEntrySafe('NPC死亡','system','【'+hit.key+'】在战斗中死亡。'); }catch(e){}
+  }
+
+  function applyCombatToNpcV60(cd){
+    var c=ensureCombat();
+    if(!c.active) return;
+    var hit=findCombatNpcV60(c.enemyName);
+    if(!hit) return;
+    var r=hit.r;
+
+    if(r.dead){
+      c.enemyHp=0;
+      c.enemyStatus='死亡';
+      c.active=false;
+      try{ renderCombatPanel(); }catch(e){}
+      return;
+    }
+
+    var max=Number(r.maxHp);
+    if(!isFinite(max)||max<=0) max=Number(c.enemyMaxHp)||100;
+    c.enemyMaxHp=Math.max(1,max);
+
+    if(cd && cd.enemyHp!==undefined){
+      c.enemyHp=Math.min(Math.max(0,Number(cd.enemyHp)||0),c.enemyMaxHp);
+    }else{
+      c.enemyHp=Math.min(Math.max(0,Number(r.hp)||0),c.enemyMaxHp);
+    }
+    r.maxHp=c.enemyMaxHp;
+    r.hp=c.enemyHp;
+
+    // MP / SP
+    var mpMax=Number(r.maxMp); if(!isFinite(mpMax)||mpMax<=0) mpMax=Number(c.enemyMaxMp)||0;
+    var spMax=Number(r.maxSp); if(!isFinite(spMax)||spMax<=0) spMax=Number(c.enemyMaxSp)||0;
+    c.enemyMaxMp=Math.max(0,mpMax); c.enemyMaxSp=Math.max(0,spMax);
+    if(cd && cd.enemyMp!==undefined) c.enemyMp=Math.min(Math.max(0,Number(cd.enemyMp)||0),c.enemyMaxMp);
+    else c.enemyMp=Math.min(Math.max(0,Number(r.mp)||0),c.enemyMaxMp);
+    if(cd && cd.enemySp!==undefined) c.enemySp=Math.min(Math.max(0,Number(cd.enemySp)||0),c.enemyMaxSp);
+    else c.enemySp=Math.min(Math.max(0,Number(r.sp)||0),c.enemyMaxSp);
+    if(c.enemyMaxMp>0) r.mp=c.enemyMp;
+    if(c.enemyMaxSp>0) r.sp=c.enemySp;
+
+    // 途径 / 序列：档案优先，档案缺省时用战斗值补
+    if(r.path && r.path!=='凡俗') c.enemyPath=r.path;
+    else if(c.enemyPath){ r.path=c.enemyPath; }
+    if(r.seq && r.seq!=='凡人') c.enemySeq=r.seq;
+    else if(c.enemySeq){ r.seq=c.enemySeq; }
+
+    if(c.enemyStatus) r.status=c.enemyStatus;
+    if(c.enemyHp<=0){
+      markCombatNpcDeadV60(hit,'战斗死亡');
+      c.active=false;
+      c.enemyStatus='死亡';
+      c.lastOutcome='敌人倒下';
+      c.endedAt=state.time||'';
+      try{ renderCombatPanel(); }catch(e){}
+    }
   }
 
   /* ==================== 3. 玩家死亡裁决 ==================== */
@@ -14829,49 +14921,110 @@ function genItemDesc_v11(name) {
   }
 
   /* ==================== 4. 战斗 UI ==================== */
+  var v60CombatExpanded=false;
+  var v60CombatLastEnemy='';
+
+  function endCombatV60(reason){
+    var c=ensureCombat();
+    if(!c.active) return;
+    var hitEnd=findCombatNpcV60(c.enemyName);
+    c.active=false;
+    c.lastOutcome=String(reason||'战斗结束');
+    c.endedAt=state.time||'';
+    if(hitEnd && !hitEnd.r.dead && /战斗中|交战|交锋/.test(String(hitEnd.r.status||''))){
+      hitEnd.r.status='在场';
+    }
+    v60CombatExpanded=false;
+    try{ renderCombatPanel(); }catch(e){}
+    try{ addEntrySafe('战斗结束','system','战斗结束：'+c.lastOutcome); }catch(e){}
+  }
+
+  function autoEndCombatV60(){
+    var c=ensureCombat();
+    if(!c.active) return;
+    var out=String(c.lastOutcome||'');
+    var st=String(c.enemyStatus||'');
+    var endReason='';
+    if(isDead()) endReason='玩家死亡';
+    else if(Number(c.enemyMaxHp)>0 && Number(c.enemyHp)<=0){
+      endReason='敌人倒下';
+      var hitHp=findCombatNpcV60(c.enemyName);
+      if(hitHp) markCombatNpcDeadV60(hitHp,'战斗死亡');
+    }
+    else if(/死亡|倒下|失去战斗能力|失去意识|被击败/.test(st)){
+      endReason='敌人倒下';
+      var hitSt=findCombatNpcV60(c.enemyName);
+      if(hitSt) markCombatNpcDeadV60(hitSt,'战斗死亡');
+    }
+    else if(/胜利|击败|战胜|逃跑|撤退|停战|谈判|议和|结束|死亡/.test(out)) endReason=out;
+    if(endReason) endCombatV60(endReason);
+  }
+
   function ensureCombatPanel(){
     var existing=byId('v60CombatPanel'); if(existing) return existing;
     try{
       var host=document.querySelector('.chat-area'); if(!host) return null;
       var wrap=document.createElement('div');
       wrap.id='v60CombatPanel';
-      wrap.style.cssText='display:none;margin:8px 0;padding:10px;border:1px solid rgba(139,107,66,.45);border-radius:10px;background:rgba(245,239,226,.96);box-shadow:0 6px 20px rgba(60,40,20,.06);';
-      wrap.innerHTML='<div style="display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap">'
-        +'<div style="font-weight:800;color:#6f4f2b">⚔ 当前交锋</div><div id="v60CombatStatus" style="font-size:11px;color:#6a6257"></div></div>'
-        +'<div id="v60CombatEnemy" style="font-size:12px;margin:7px 0;line-height:1.7"></div>'
-        +'<div style="display:flex;gap:6px;flex-wrap:wrap">'
-        +'<button class="btn small" data-v60act="观察">👁 观察</button>'
-        +'<button class="btn small" data-v60act="攻击">⚔ 攻击</button>'
-        +'<button class="btn small" data-v60act="使用能力">✨ 能力</button>'
-        +'<button class="btn small" data-v60act="防御">🛡 防御</button>'
-        +'<button class="btn small" data-v60act="逃跑">🏃 逃跑</button>'
-        +'<button class="btn small" data-v60act="交涉">🗣 交涉</button>'
+      wrap.style.cssText='display:none;margin:8px 0;padding:8px 10px;border:1px solid rgba(139,107,66,.45);border-radius:10px;background:rgba(245,239,226,.96);box-shadow:0 6px 20px rgba(60,40,20,.06);';
+      wrap.innerHTML='<div id="v60CombatHead" style="display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap;cursor:pointer;user-select:none">'
+        +'<div style="font-weight:800;color:#6f4f2b">⚔ 当前交锋</div>'
+        +'<div id="v60CombatSummary" style="font-size:11px;color:#6a6257;flex:1;text-align:right"></div>'
+        +'<div id="v60CombatToggle" style="font-size:11px;color:#7a6136;font-weight:700">展开</div>'
+        +'</div>'
+        +'<div id="v60CombatBody" style="display:none;margin-top:8px">'
+        +'<div id="v60CombatStatus" style="font-size:11px;color:#6a6257;margin-bottom:5px"></div>'
+        +'<div id="v60CombatEnemy" style="font-size:12px;line-height:1.7"></div>'
+        +'<div style="display:flex;justify-content:flex-end;margin-top:8px">'
+        +'<button class="btn small" id="v60CombatEndBtn">结束战斗</button>'
+        +'</div>'
         +'</div>';
       host.insertBefore(wrap,host.querySelector('.input-area'));
-      Array.prototype.forEach.call(wrap.querySelectorAll('button[data-v60act]'),function(b){
-        b.onclick=function(){
-          if(isDead()) return;
-          var act=b.getAttribute('data-v60act');
-          var inp=byId('actionInput'); if(inp) inp.value=act+'。';
-          try{if(typeof execute==='function') execute();}catch(e){}
-        };
-      });
+      var head=byId('v60CombatHead');
+      if(head) head.onclick=function(){
+        v60CombatExpanded=!v60CombatExpanded;
+        renderCombatPanel();
+      };
+      var endBtn=byId('v60CombatEndBtn');
+      if(endBtn) endBtn.onclick=function(){
+        if(isDead()) return;
+        endCombatV60('玩家结束战斗');
+      };
       return wrap;
     }catch(e){return null;}
   }
   function renderCombatPanel(){
     var c=ensureCombat();
     var p=ensureCombatPanel(); if(!p) return;
-    if(!c.active || isDead()){p.style.display='none';return;}
+    try{ applyCombatToNpcV60(null); }catch(e) {}
+    autoEndCombatV60();
+    if(!c.active || isDead()){
+      p.style.display='none';
+      v60CombatExpanded=false;
+      return;
+    }
+    if(v60CombatLastEnemy!==String(c.enemyName||'')){
+      v60CombatLastEnemy=String(c.enemyName||'');
+      v60CombatExpanded=false;
+    }
     p.style.display='block';
+    var hp=(c.enemyMaxHp>0)?('HP '+c.enemyHp+'/'+c.enemyMaxHp):'HP 未知';
+    var sum=byId('v60CombatSummary');
+    if(sum) sum.textContent=(c.enemyName||'未知敌人')+' · '+hp+' · '+(c.enemyStatus||'战斗中');
+    var body=byId('v60CombatBody');
+    var tg=byId('v60CombatToggle');
+    if(body) body.style.display=v60CombatExpanded?'block':'none';
+    if(tg) tg.textContent=v60CombatExpanded?'收起':'展开';
     var st=byId('v60CombatStatus');
     if(st) st.textContent='第 '+(c.turn||1)+' 轮 · '+(c.lastOutcome||'战斗中');
     var e=byId('v60CombatEnemy');
     if(e){
-      var hp=(c.enemyMaxHp>0)?('HP '+c.enemyHp+'/'+c.enemyMaxHp):'HP 未知';
+      var mp=(c.enemyMaxMp>0)?('MP '+c.enemyMp+'/'+c.enemyMaxMp):'MP 未知';
+      var sp=(c.enemyMaxSp>0)?('SP '+c.enemySp+'/'+c.enemyMaxSp):'SP 未知';
       e.innerHTML='<strong>敌人：</strong>'+(c.enemyName||'未知')
         +' · '+(c.enemySeq||'位格未知')+' · '+(c.enemyPath||'途径未知')
-        +'<br><strong>状态：</strong>'+(c.enemyStatus||'未知')+' · '+hp;
+        +'<br><strong>状态：</strong>'+(c.enemyStatus||'未知')
+        +'<br><strong>HP：</strong>'+hp+' · <strong>MP：</strong>'+mp+' · <strong>SP：</strong>'+sp;
     }
   }
 
@@ -14942,7 +15095,7 @@ function genItemDesc_v11(name) {
       +'二、原著事件：世界按日期自动运行；玩家不在现场时事件仍会发生，可通过报纸、传闻、NPC反应、价格、组织行动、后续结果被发现，不强制弹窗。\n'
       +'三、玩家干预：只有真正完成因果链的行动才能改变原著事件；成功后在 stateChanges.canonOverride 返回 [{"id":"事件ID","newOutcome":"玩家改变后的结果"}]；失败则原著继续。不得因为玩家一句“我阻止了”就认定成功。\n'
       +'四、局部因果：改变一个 NPC 不等于全世界自动改史，只传播到存在真实因果链的对象。\n'
-      +'五、战斗：combat.active=true 才进入正式战斗。建议返回：{"active":true,"enemyName":"","enemyHp":0,"enemyMaxHp":0,"enemyStatus":"","enemyPath":"","enemySeq":"","turn":1,"canFlee":true,"lastOutcome":"","outcome":""}。战斗应考虑序列/位格、途径能力、情报、距离、地形、准备和非凡物品，而不是纯攻击力。\n'
+      +'五、战斗：combat.active=true 才进入正式战斗。建议返回：{"active":true,"enemyName":"","enemyHp":0,"enemyMaxHp":0,"enemyStatus":"","enemyPath":"","enemySeq":"","turn":1,"canFlee":true,"lastOutcome":"","outcome":""}。战斗应考虑序列/位格、途径能力、情报、距离、地形、准备和非凡物品，而不是纯攻击力。若敌人是已有 NPC，其 enemyHp/enemyMaxHp/enemyMp/enemySp/enemySeq/enemyPath 必须与该 NPC 档案一致，不得另编一套数值。\n'
       +'六、死亡：HP归零通常先判为濒死，不得仅凭一句“你死了”结束。只有存在明确、不可避免、真实致死条件时才返回 deathCandidate=true、deathConfirmed=true、fatality>=3、unavoidable=true、deathReason；不要为了制造戏剧性提高 fatality。\n'
       +'七、死亡后：玩家不能继续对话或普通行动。除合法世界机制外不得自行复活；前端会提供回退/读档。\n'
       +'八、NPC序列：已有“序列X·名称”不要改名；旧时间线不得无理由把更高位阶（更小数字）的当前状态降回去。\n'
@@ -14965,6 +15118,7 @@ function genItemDesc_v11(name) {
       try{
         var cd=combatDataFrom(data);
         if(cd) normalizeCombat(cd);
+        if(cd) applyCombatToNpcV60(cd);
         if(cd && cd.active===false && cd.outcome){
           var cc=ensureCombat(); cc.lastOutcome=String(cd.outcome); cc.active=false;
         }
