@@ -2718,8 +2718,9 @@ async function genInit() {
     '2. 玩家开局不认识任何大人物。\n' +
     '3. 对话写为 角色名：“台词”，内心用 <thought>想法</thought>。\n' +
     '4. stateChanges 中完整输出 time/location/money/hp/mp/sp/sanity/playerUpdate/addBag。\n' +
-    '5. memoryEntry 输出本轮结构化记忆。\n' +
-    '6. 严格返回纯 JSON。';
+    '5. 第一轮 playerUpdate 尽量给出 appearance（至少基础容貌）；identity、residence 若背景能确定就写，不确定可以留空，但不要写“待定”。\n' +
+    '6. memoryEntry 输出本轮结构化记忆。\n' +
+    '7. 严格返回纯 JSON。';
 
   try {
     var raw = await callAPI([{ role: 'system', content: prompt }, { role: 'user', content: '世界生成，命运帷幕开启。' }], cfg);
@@ -10093,7 +10094,12 @@ function genItemDesc_v11(name) {
       }
 
       // 身份不能随意改
-      if (pu.identity && state.identity && pu.identity !== state.identity) {
+      var _curIdentity = String(state.identity || '');
+      if (pu.identity && state.identity &&
+          _curIdentity !== '待定' &&
+          _curIdentity !== '未知' &&
+          _curIdentity !== '' &&
+          pu.identity !== state.identity) {
         if (!hasJoin) {
           console.log('[V40] 拦截玩家身份改变：' + state.identity + ' → ' + pu.identity);
           delete pu.identity;
